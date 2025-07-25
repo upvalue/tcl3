@@ -7,16 +7,17 @@
 
 namespace cacl {
 
-enum ReturnCode { C_OK, C_ERR, C_UNKNOWN };
+enum ReturnCode { C_OK = 0, C_ERR = 1, C_UNKNOWN = 2 };
 
 enum TokenType {
-  T_UNKNOWN,
-  T_SEP,
-  T_EOL,
-  T_STRING,
-  T_ESC,
-  T_CMD,
-  T_VAR,
+  TK_ESC = 0,
+  TK_STR = 1,
+  TK_CMD = 2,
+  TK_VAR = 3,
+  TK_SEP = 4,
+  TK_EOL = 5,
+  TK_EOF = 6,
+  TK_UNKNOWN = 7,
 };
 
 #define C_TRACE_PARSER_BIT 0x1
@@ -32,7 +33,7 @@ enum TokenType {
 
 struct Parser {
   Parser(const std::string &buffer_)
-      : buffer(buffer_), result(""), i(0), start(0), end(0), token(T_UNKNOWN),
+      : buffer(buffer_), result(""), i(0), start(0), end(0), token(TK_UNKNOWN),
         insidequote(false) {}
 
   std::string buffer;
@@ -68,7 +69,7 @@ struct Parser {
    * Separator -- simply consumes non-newline whitespace
    */
   ReturnCode parseSep() {
-    token = T_SEP;
+    token = TK_SEP;
     return save([this]() {
       while (!done() &&
              (current() == '\t' || current() == '\n' || current() == '\r')) {
@@ -82,7 +83,7 @@ struct Parser {
    * EOL
    */
   ReturnCode parseEol() {
-    token = T_EOL;
+    token = TK_EOL;
     return save([this]() {
       while (!done() &&
              (current() == ' ' || current() == '\t' || current() == '\n' ||
@@ -100,8 +101,8 @@ struct Parser {
    * Handles starting brace beginning
    */
   ReturnCode parseString() {
-    token = T_STRING;
-    bool new_word = token == T_SEP || token == T_EOL || token == T_STRING;
+    token = TK_STR;
+    bool new_word = token == TK_SEP || token == TK_EOL || token == TK_STR;
 
     // Check whether we need to set inside quote and consume "
     if (new_word && current() == '"') {
@@ -112,14 +113,14 @@ struct Parser {
     return save([this]() {
       while (true) {
         if (done()) {
-          token = T_ESC;
+          token = TK_ESC;
           return C_OK;
         }
         switch (current()) {
         case '"': {
           // If we're inside quote already this means it's time to escape
           if (insidequote) {
-            token = T_ESC;
+            token = TK_ESC;
             insidequote = false;
             i += 1;
             return C_OK;
@@ -133,7 +134,9 @@ struct Parser {
     });
   }
 
-  ReturnCode getToken() {
+  std::string tokenBody() { return buffer.substr(start, end - start); }
+
+  ReturnCode nextToken() {
     while (!done()) {
       char c = current();
       C_TRACE_PARSER("char: " << c);
@@ -151,15 +154,105 @@ struct Parser {
         return parseString();
       }
     }
-    std::cout << "reached end" << std::endl;
-    token = T_EOL;
+    token = TK_EOL;
     return C_OK;
   }
 };
 
+struct Interp;
+
+typedef ReturnCode(cmd_func_t)(Interp *i, std::vector<std::string> &argv,
+                               void *privdata);
+
+struct Cmd {
+  Cmd(const std::string &name_, cmd_func_t *func_, void *privdata_, Cmd *next_)
+      : name(name_), func(func_), privdata(privdata_), next(next_) {}
+  ~Cmd() {}
+
+  std::string name;
+  cmd_func_t *func;
+  void *privdata;
+  Cmd *next;
+};
+
 struct Interp {
-  void eval(const std::string &str) {}
-}
+  Cmd *commands;
+  std::string result;
+  std::string errbuf;
+
+  Interp() : commands(0) {}
+
+  ReturnCode eval(const std::string &str) {
+    result = "";
+    Parser p(str);
+    ReturnCode ret = C_OK;
+    std::vector<std::string> argv;
+    while (1) {
+      TokenType prevtype = p.token;
+      ret = p.nextToken();
+      std::cout << "token: " << p.token << std::endl;
+      if (ret != C_OK) {
+        return ret;
+      }
+
+      if (p.token == TK_EOF) {
+        break;
+      }
+
+      if (p.token == TK_CMD) {
+        std::cout << "got command!" << std::endl;
+      } else if (p.token == TK_ESC) {
+        continue;
+      }
+
+      if (p.token == TK_EOL) {
+        Cmd *c;
+        prevtype = p.token;
+
+        if (argv.size()) {
+          if ((c = getCommand(argv[0])) == nullptr) {
+            errbuf = "command not found";
+            return C_ERR;
+          }
+
+          c->func(this, argv, c->privdata);
+        }
+
+        std::cout << "EOL. Going to evaluate " << p.buffer << std::endl;
+      }
+
+      argv.clear();
+
+      if (prevtype == TK_SEP || prevtype == TK_EOL) {
+        argv.push_back(p.tokenBody());
+      }
+    }
+    return C_OK;
+  }
+
+  Cmd *getCommand(const std::string &name) const {
+    for (Cmd *c = commands; c != nullptr; c = c->next) {
+      if (c->name.compare(name) == 0) {
+        return c;
+      }
+    }
+    return nullptr;
+  }
+
+  ReturnCode register_command(const std::string &name, cmd_func_t fn,
+                              void *privdata = nullptr) {
+    Cmd *chk = getCommand(name);
+    if (chk != nullptr) {
+      errbuf = "command already defied";
+      return C_ERR;
+    }
+    Cmd *cmd = new Cmd(name, fn, privdata, commands);
+    commands = cmd;
+    return C_OK;
+  }
+
+  void register_core_commands() {}
+};
 
 } // namespace cacl
 

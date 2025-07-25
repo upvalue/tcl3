@@ -364,15 +364,18 @@ void picolInitInterp(struct picolInterp *i)
     i->result = strdup("");
 }
 
-void picolCloseInterp(struct picolInterp *i) {
+void picolCloseInterp(struct picolInterp *i)
+{
     free(i->callframe);
-    if(i->result) free(i->result);
-    struct picolCmd* c = i->commands, *next;
-    while(c) {
-      next = c->next;
-      free(c->name);
-      free(c);
-      c = next;
+    if (i->result)
+        free(i->result);
+    struct picolCmd *c = i->commands, *next;
+    while (c)
+    {
+        next = c->next;
+        free(c->name);
+        free(c);
+        c = next;
     }
 }
 
@@ -460,6 +463,7 @@ int picolEval(struct picolInterp *i, char *t)
         int tlen;
         int prevtype = p.type;
         picolGetToken(&p);
+        printf("token: %d\n", p.type);
         if (p.type == PT_EOF)
             break;
         tlen = p.end - p.start + 1;
@@ -503,9 +507,11 @@ int picolEval(struct picolInterp *i, char *t)
         /* We have a complete command + args. Call it! */
         if (p.type == PT_EOL)
         {
+            printf("complete command + args, call it\n");
             struct picolCmd *c;
             free(t);
             prevtype = p.type;
+            printf("hehe argc : %d\n", argc);
             if (argc)
             {
                 if ((c = picolGetCommand(i, argv[0])) == NULL)
@@ -767,7 +773,6 @@ int main(int argc, char **argv)
     struct picolInterp interp;
     picolInitInterp(&interp);
     picolRegisterCoreCommands(&interp);
-    // malloc(1024);
     if (argc == 1)
     {
         while (1)

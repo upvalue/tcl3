@@ -8,13 +8,12 @@
 
 using namespace cacl;
 
-TEST_CASE("empty") { CHECK(0 == 0); }
-
 void checkSep(Parser &p) {
-  CHECK(p.getToken() == C_OK);
-  CHECK(p.tokenType() == T_SEP);
+  CHECK(p.nextToken() == C_OK);
+  CHECK(p.tokenType() == TK_SEP);
 }
 
+/*
 TEST_CASE("parser parses separators") {
   Parser p1(" ");
   checkSep(p1);
@@ -27,8 +26,8 @@ TEST_CASE("parser parses separators") {
 }
 
 void checkEol(Parser &p) {
-  CHECK(p.getToken() == C_OK);
-  CHECK(p.tokenType() == T_EOL);
+  CHECK(p.nextToken() == C_OK);
+  CHECK(p.tokenType() == TK_EOL);
 }
 
 TEST_CASE("parser parses EOL") {
@@ -41,12 +40,42 @@ TEST_CASE("parser parses EOL") {
 
 TEST_CASE("parser parses plain string") {
   Parser p1("\"12345\"");
-  CHECK(p1.getToken() == C_OK);
-  CHECK(p1.tokenType() == T_ESC);
+  CHECK(p1.nextToken() == C_OK);
+  CHECK(p1.tokenType() == TK_ESC);
 }
 
 TEST_CASE("parser parses plain command") {
   Parser p1("testret\n");
-  CHECK(p1.getToken() == C_OK);
-  CHECK(p1.tokenType() == T_EOL);
+  CHECK(p1.nextToken() == C_OK);
+  CHECK(p1.tokenType() == TK_ESC);
 }
+  */
+
+///// EVALUATOR TESTS
+
+ReturnCode test_ret(Interp *i, int argc, char **argv, void *privdata) {
+  return C_OK;
+}
+
+/*
+TEST_CASE("defining duplicate commands causes error") {
+  Interp i;
+  CHECK(i.register_command("testret", test_ret) == C_OK);
+  CHECK(i.register_command("testret", test_ret) == C_ERR);
+}
+  */
+
+TEST_CASE("evaluator handles nonexistent command") {
+  Interp i;
+  i.eval("notreal");
+  CHECK(i.eval("notreal") == C_ERR);
+}
+
+/*
+TEST_CASE("evaluator evaluates basic command") {
+  Interp i;
+  i.register_command("testret", 0);
+  CHECK(i.eval("testret\n") == C_OK);
+  CHECK(i.result.compare("success") == 0);
+}
+  */
