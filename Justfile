@@ -5,3 +5,5 @@ ODIN := "odin"
 run:
   ${ODIN} run tcl.odin -file
 
+test:
+  ${ODIN} test .

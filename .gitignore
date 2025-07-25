@@ -1,2 +1,7 @@
 /tcl
 /.env
+
+# c 
+/c/repl
+/c/test
+*.o
