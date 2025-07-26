@@ -1,7 +1,7 @@
 .PHONY: leaks
 
 picol: picol.c
-	clang -g -o $@ $<
+	clang -DPICOL_MAIN -DPICOL_TRACE_PARSER -g -o $@ $<
 
 leaks:
 	leaks --atExit -- ./picol empty.tcl

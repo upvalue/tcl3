@@ -20,24 +20,63 @@ enum TokenType {
   TK_UNKNOWN = 7,
 };
 
+inline std::ostream &operator<<(std::ostream &os, TokenType t) {
+
+  switch (t) {
+  case TK_ESC:
+    os << "TK_ESC";
+    break;
+  case TK_STR:
+    os << "TK_STR";
+    break;
+  case TK_CMD:
+    os << "TK_CMD";
+    break;
+  case TK_VAR:
+    os << "TK_VAR";
+    break;
+  case TK_SEP:
+    os << "TK_SEP";
+    break;
+  case TK_EOL:
+    os << "TK_EOL";
+    break;
+  case TK_EOF:
+    os << "TK_EOF";
+    break;
+  case TK_UNKNOWN:
+    os << "TK_UNKNOWN";
+    break;
+  }
+  return os;
+}
+
 #define C_TRACE_PARSER_BIT 0x1
+#define C_TRACE_EVAL_BIT 0x2
 
 #define C_TRACE_PARSER(x)                                                      \
   if (C_TRACE & C_TRACE_PARSER_BIT) {                                          \
     std::cout << "at: " << i << ' ' << x << std::endl;                         \
   }
 
+#define C_TRACE_EVAL(x)                                                        \
+  if (C_TRACE & C_TRACE_EVAL_BIT) {                                            \
+    std::cout << x << std::endl;                                               \
+  }
+
 #ifndef C_TRACE
-#define C_TRACE C_TRACE_PARSER_BIT
+#define C_TRACE C_TRACE_PARSER_BIT | C_TRACE_EVAL_BIT
 #endif
 
+typedef std::string string;
+
 struct Parser {
-  Parser(const std::string &buffer_)
-      : buffer(buffer_), result(""), i(0), start(0), end(0), token(TK_UNKNOWN),
+  Parser(const string &buffer_)
+      : buffer(buffer_), result(""), i(0), start(0), end(0), token(TK_EOL),
         insidequote(false) {}
 
-  std::string buffer;
-  std::string result;
+  string buffer;
+  string result;
 
   // String iterator
   size_t i;
@@ -117,6 +156,16 @@ struct Parser {
           return C_OK;
         }
         switch (current()) {
+        case '\t':
+        case '\n':
+        case '\r':
+        case ';': {
+          if (!insidequote) {
+            token = TK_ESC;
+            return C_OK;
+          }
+          break;
+        }
         case '"': {
           // If we're inside quote already this means it's time to escape
           if (insidequote) {
@@ -134,12 +183,11 @@ struct Parser {
     });
   }
 
-  std::string tokenBody() { return buffer.substr(start, end - start); }
+  string tokenBody() { return buffer.substr(start, end - start); }
 
-  ReturnCode nextToken() {
+  ReturnCode _nextToken() {
     while (!done()) {
       char c = current();
-      C_TRACE_PARSER("char: " << c);
       switch (c) {
       case ' ':
       case '\t':
@@ -154,22 +202,40 @@ struct Parser {
         return parseString();
       }
     }
-    token = TK_EOL;
+
+    // If we've reached the end of the buffer,
+    // if there's a non-EOL non-EOF token present, we emit an EOL
+    // to cause the interpreter to actually evaluate the string
+
+    // If EOL, we've been called again and emit an EOF to cease execution
+    if (token != TK_EOL && token != TK_EOF) {
+      token = TK_EOL;
+    } else {
+      token = TK_EOF;
+    }
+
     return C_OK;
+  }
+
+  ReturnCode nextToken() {
+    ReturnCode ret = _nextToken();
+    C_TRACE_PARSER("token type: " << token << " token body: '" << tokenBody()
+                                  << "'");
+    return ret;
   }
 };
 
 struct Interp;
 
-typedef ReturnCode(cmd_func_t)(Interp *i, std::vector<std::string> &argv,
+typedef ReturnCode(cmd_func_t)(Interp *i, std::vector<string> &argv,
                                void *privdata);
 
 struct Cmd {
-  Cmd(const std::string &name_, cmd_func_t *func_, void *privdata_, Cmd *next_)
+  Cmd(const string &name_, cmd_func_t *func_, void *privdata_, Cmd *next_)
       : name(name_), func(func_), privdata(privdata_), next(next_) {}
   ~Cmd() {}
 
-  std::string name;
+  string name;
   cmd_func_t *func;
   void *privdata;
   Cmd *next;
@@ -177,16 +243,16 @@ struct Cmd {
 
 struct Interp {
   Cmd *commands;
-  std::string result;
-  std::string errbuf;
+  string result;
+  string errbuf;
 
   Interp() : commands(0) {}
 
-  ReturnCode eval(const std::string &str) {
+  ReturnCode eval(const string &str) {
     result = "";
     Parser p(str);
     ReturnCode ret = C_OK;
-    std::vector<std::string> argv;
+    std::vector<string> argv;
     while (1) {
       TokenType prevtype = p.token;
       ret = p.nextToken();
@@ -202,7 +268,6 @@ struct Interp {
       if (p.token == TK_CMD) {
         std::cout << "got command!" << std::endl;
       } else if (p.token == TK_ESC) {
-        continue;
       }
 
       if (p.token == TK_EOL) {
@@ -211,26 +276,30 @@ struct Interp {
 
         if (argv.size()) {
           if ((c = getCommand(argv[0])) == nullptr) {
-            errbuf = "command not found";
+            errbuf.clear();
+            errbuf += "command not found: '";
+            errbuf += argv[0];
+            errbuf += "'";
             return C_ERR;
           }
 
           c->func(this, argv, c->privdata);
         }
 
-        std::cout << "EOL. Going to evaluate " << p.buffer << std::endl;
+        argv.clear();
+        continue;
       }
-
-      argv.clear();
 
       if (prevtype == TK_SEP || prevtype == TK_EOL) {
         argv.push_back(p.tokenBody());
+      } else {
+        std::cout << "interpolation woah" << std::endl;
       }
     }
     return C_OK;
   }
 
-  Cmd *getCommand(const std::string &name) const {
+  Cmd *getCommand(const string &name) const {
     for (Cmd *c = commands; c != nullptr; c = c->next) {
       if (c->name.compare(name) == 0) {
         return c;
@@ -239,7 +308,7 @@ struct Interp {
     return nullptr;
   }
 
-  ReturnCode register_command(const std::string &name, cmd_func_t fn,
+  ReturnCode register_command(const string &name, cmd_func_t fn,
                               void *privdata = nullptr) {
     Cmd *chk = getCommand(name);
     if (chk != nullptr) {
@@ -255,5 +324,8 @@ struct Interp {
 };
 
 } // namespace cacl
+
+#undef C_TRACE_PARSER
+#undef C_TRACE_EVAL
 
 #endif

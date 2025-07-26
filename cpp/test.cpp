@@ -53,7 +53,7 @@ TEST_CASE("parser parses plain command") {
 
 ///// EVALUATOR TESTS
 
-ReturnCode test_ret(Interp *i, int argc, char **argv, void *privdata) {
+ReturnCode test_ret(Interp *i, std::vector<std::string> &argv, void *privdata) {
   return C_OK;
 }
 
@@ -71,11 +71,12 @@ TEST_CASE("evaluator handles nonexistent command") {
   CHECK(i.eval("notreal") == C_ERR);
 }
 
-/*
 TEST_CASE("evaluator evaluates basic command") {
   Interp i;
-  i.register_command("testret", 0);
-  CHECK(i.eval("testret\n") == C_OK);
-  CHECK(i.result.compare("success") == 0);
+  i.register_command("testret", test_ret, 0);
+  ReturnCode ret = i.eval("testret\n");
+  std::cout << "result: " << i.errbuf << std::endl;
+  std::cout << "retcode: " << ret << std::endl;
+  // CHECK(ret == C_OK);
+  // CHECK(i.result.compare("success") == 0);
 }
-  */

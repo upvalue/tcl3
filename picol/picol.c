@@ -311,7 +311,7 @@ int picolParseComment(struct picolParser *p)
     return PICOL_OK;
 }
 
-int picolGetToken(struct picolParser *p)
+int _picolGetToken(struct picolParser *p)
 {
     while (1)
     {
@@ -352,6 +352,52 @@ int picolGetToken(struct picolParser *p)
         }
     }
     return PICOL_OK; /* unreached */
+}
+
+void printtoken(int t)
+{
+    switch (t)
+    {
+    case PT_ESC:
+        printf("PT_ESC");
+        break;
+    case PT_STR:
+        printf("PT_STR");
+        break;
+    case PT_CMD:
+        printf("PT_CMD");
+        break;
+    case PT_VAR:
+        printf("PT_VAR");
+        break;
+    case PT_SEP:
+        printf("PT_SEP");
+        break;
+    case PT_EOL:
+        printf("PT_EOL");
+        break;
+    case PT_EOF:
+        printf("PT_EOF");
+        break;
+    default:
+        printf("PT_UNKNOWN");
+    }
+}
+
+int picolGetToken(struct picolParser *p)
+{
+    int ret = _picolGetToken(p);
+#ifdef PICOL_TRACE_PARSER
+    printf("at: %ld ", p->p - p->text);
+    printf("token type: ");
+    printtoken(p->type);
+    char *body = calloc(1, (p->end - p->start) + 2);
+    strncpy(body, p->start, (p->end - p->start) + 1);
+    body[(p->end - p->start) + 1] = '\0';
+    printf(" token body: '%s'\n", body);
+    free(body);
+#endif
+    return ret;
 }
 
 void picolInitInterp(struct picolInterp *i)
@@ -459,6 +505,7 @@ int picolEval(struct picolInterp *i, char *t)
     picolInitParser(&p, t);
     while (1)
     {
+        printf("while(1) loop\n");
         char *t;
         int tlen;
         int prevtype = p.type;
@@ -507,11 +554,9 @@ int picolEval(struct picolInterp *i, char *t)
         /* We have a complete command + args. Call it! */
         if (p.type == PT_EOL)
         {
-            printf("complete command + args, call it\n");
             struct picolCmd *c;
             free(t);
             prevtype = p.type;
-            printf("hehe argc : %d\n", argc);
             if (argc)
             {
                 if ((c = picolGetCommand(i, argv[0])) == NULL)
@@ -768,6 +813,8 @@ void picolRegisterCoreCommands(struct picolInterp *i)
     picolRegisterCommand(i, "return", picolCommandReturn, NULL);
 }
 
+#ifdef PICOL_MAIN
+
 int main(int argc, char **argv)
 {
     struct picolInterp interp;
@@ -805,3 +852,5 @@ int main(int argc, char **argv)
     picolCloseInterp(&interp);
     return 0;
 }
+
+#endif
