@@ -202,6 +202,9 @@ int picolParseVar(struct picolParser *p)
     return PICOL_OK;
 }
 
+/**
+ * Variable, parses $alpha1234_5 type strings
+ */
 int picolParseBrace(struct picolParser *p)
 {
     int level = 1;

@@ -41,6 +41,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  Var *x = i.get_var("x");
+
   // Print result if any
   if (!i.result.empty()) {
     std::cout << i.result << std::endl;

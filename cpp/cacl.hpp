@@ -4,6 +4,7 @@
 #include <cstring>
 #include <functional>
 #include <iostream>
+#include <sstream>
 #include <string>
 
 // TODO: Variables
@@ -67,6 +68,11 @@ inline std::ostream &operator<<(std::ostream &os, TokenType t) {
   if (C_TRACE & C_TRACE_EVAL_BIT) {                                            \
     std::cout << x << std::endl;                                               \
   }
+
+#define C_ERR(x)                                                               \
+  std::ostringstream _c_err_line_##__LINE__;                                   \
+  _c_err_line_##__LINE__ << x;                                                 \
+  result = _c_err_line_##__LINE__.str();
 
 #ifndef C_TRACE
 #define C_TRACE C_TRACE_PARSER_BIT | C_TRACE_EVAL_BIT
@@ -262,6 +268,7 @@ struct Parser {
 
 struct Interp;
 
+// TODO: can privdata be replaced with lambda capture?
 typedef Status(cmd_func_t)(Interp &i, std::vector<string> &argv,
                            void *privdata);
 
@@ -276,11 +283,40 @@ struct Cmd {
   Cmd *next;
 };
 
+struct Var {
+  std::string *name, *val;
+  Var *next;
+};
+
+struct CallFrame {
+  CallFrame() : vars(nullptr), parent(nullptr) {}
+  ~CallFrame() {
+    for (Var *v = vars; v != nullptr; v = v->next) {
+      delete v->name;
+      delete v->val;
+      delete v;
+    }
+  }
+  Var *vars;
+  CallFrame *parent;
+};
+
 struct Interp {
   Cmd *commands;
   string result;
+  CallFrame *callframe;
+  size_t level;
 
-  Interp() : commands(0) {}
+  Interp() : level(0), commands(nullptr), callframe(new CallFrame()) {}
+
+  ~Interp() {
+    /*
+    TODO segfault and cleanup/
+    for (CallFrame *cf = callframe; cf != nullptr; cf = cf->parent) {
+      delete cf;
+    }
+      */
+  }
 
   //
   ////// COMMANDS & VARIABLES
@@ -309,28 +345,70 @@ struct Interp {
     return S_OK;
   }
 
-  void set_var(const string &name, const string &val) {
-    std::cout << "set var" << std::endl;
-    // TODO: Implement
+  /**
+   * Get a variable by name
+   */
+  Var *get_var(const string &name) {
+    for (Var *v = callframe->vars; v != nullptr; v = v->next) {
+      if (v->name->compare(name) == 0) {
+        return v;
+      }
+    }
+    return nullptr;
+  }
+
+  /**
+   * Set a variable by name
+   */
+  Status set_var(const string &name, const string &val) {
+    Var *v = get_var(name);
+    if (v) {
+      delete v->val;
+      v->val = new string(val);
+    } else {
+      v = new Var();
+      v->name = new string(name);
+      v->val = new string(val);
+      v->next = callframe->vars;
+      callframe->vars = v;
+    }
+    return S_OK;
   }
 
   //
   ////// STANDARD LIBRARY
   //
 
+  bool arity_check(const string &name, const std::vector<string> &argv,
+                   size_t min, size_t max) {
+    if (min == max && argv.size() != min) {
+      C_ERR("wrong number of args for " << name << " (expected " << min << ")");
+      return false;
+    }
+
+    if (argv.size() < min || argv.size() > max) {
+      C_ERR("wrong number of args for " << name << " (expected " << min
+                                        << " to " << max << ")");
+      return false;
+    }
+    return true;
+  }
+
   void register_core_commands() {
     auto puts = [](Interp &i, std::vector<string> &argv, void *privdata) {
-      if (argv.size() != 2) {
+      if (!i.arity_check("puts", argv, 2, 2)) {
         return S_ERR;
       }
+
       std::cout << argv[1] << std::endl;
       return S_OK;
     };
 
     auto set = [](Interp &i, std::vector<string> &argv, void *privdata) {
-      if (argv.size() != 3) {
+      if (!i.arity_check("set", argv, 3, 3)) {
         return S_ERR;
       }
+
       i.set_var(argv[1], argv[2]);
       return S_OK;
     };
@@ -387,10 +465,7 @@ struct Interp {
         // return an error
         if (argv.size()) {
           if ((c = get_command(argv[0])) == nullptr) {
-            std::string err("command not found: '");
-            err += argv[0];
-            err += '"';
-            result = err;
+            C_ERR("command not found: '" << argv[0] << "'");
             return S_ERR;
           }
 
