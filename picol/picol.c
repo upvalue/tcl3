@@ -202,9 +202,6 @@ int picolParseVar(struct picolParser *p)
     return PICOL_OK;
 }
 
-/**
- * Variable, parses $alpha1234_5 type strings
- */
 int picolParseBrace(struct picolParser *p)
 {
     int level = 1;
@@ -362,28 +359,53 @@ void printtoken(int t)
     switch (t)
     {
     case PT_ESC:
-        printf("PT_ESC");
+        fprintf(stderr, "TK_ESC");
         break;
     case PT_STR:
-        printf("PT_STR");
+        fprintf(stderr, "TK_STR");
         break;
     case PT_CMD:
-        printf("PT_CMD");
+        fprintf(stderr, "TK_CMD");
         break;
     case PT_VAR:
-        printf("PT_VAR");
+        fprintf(stderr, "TK_VAR");
         break;
     case PT_SEP:
-        printf("PT_SEP");
+        fprintf(stderr, "TK_SEP");
         break;
     case PT_EOL:
-        printf("PT_EOL");
+        fprintf(stderr, "TK_EOL");
         break;
     case PT_EOF:
-        printf("PT_EOF");
+        fprintf(stderr, "TK_EOF");
         break;
     default:
-        printf("PT_UNKNOWN");
+        fprintf(stderr, "TK_UNKNOWN");
+    }
+}
+
+void print_escaped_string(char *s)
+{
+    for (size_t i = 0; i < strlen(s); i++)
+    {
+        switch (s[i])
+        {
+        case '\n':
+            fputc('\\', stderr);
+            fputc('n', stderr);
+            break;
+        case '\r':
+            fputc('\\', stderr);
+            fputc('r', stderr);
+            break;
+        case '\t':
+            fputc('\\', stderr);
+            fputc('t', stderr);
+            break;
+        default:
+            fputc(s[i], stderr);
+            break;
+        }
     }
 }
 
@@ -391,13 +413,14 @@ int picolGetToken(struct picolParser *p)
 {
     int ret = _picolGetToken(p);
 #ifdef PICOL_TRACE_PARSER
-    printf("at: %ld ", p->p - p->text);
-    printf("token type: ");
+    fprintf(stderr, "{\"type\": \"");
     printtoken(p->type);
     char *body = calloc(1, (p->end - p->start) + 2);
     strncpy(body, p->start, (p->end - p->start) + 1);
     body[(p->end - p->start) + 1] = '\0';
-    printf(" token body: '%s'\n", body);
+    fprintf(stderr, "\", \"begin\": %ld, \"end\": %ld, \"body\": \"", p->start - p->text, p->end - p->text);
+    print_escaped_string(body);
+    fprintf(stderr, "\"}\n");
     free(body);
 #endif
     return ret;
@@ -508,12 +531,10 @@ int picolEval(struct picolInterp *i, char *t)
     picolInitParser(&p, t);
     while (1)
     {
-        printf("while(1) loop\n");
         char *t;
         int tlen;
         int prevtype = p.type;
         picolGetToken(&p);
-        printf("token: %d\n", p.type);
         if (p.type == PT_EOF)
             break;
         tlen = p.end - p.start + 1;
@@ -820,6 +841,7 @@ void picolRegisterCoreCommands(struct picolInterp *i)
 
 int main(int argc, char **argv)
 {
+
     struct picolInterp interp;
     picolInitInterp(&interp);
     picolRegisterCoreCommands(&interp);

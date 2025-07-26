@@ -170,6 +170,32 @@ struct Parser {
   }
 
   /**
+   * Brace -- finds the matching brace
+   * while handling levels
+   */
+  Status parse_brace() {
+    size_t level = 1;
+    Save save(this);
+    while (!done()) {
+      if (current() == '\\') {
+        i += 1;
+      } else if (current() == '{') {
+        level += 1;
+      } else if (current() == '}') {
+        level -= 1;
+        if (level == 0) {
+          token = TK_STR;
+          return S_OK;
+        }
+      }
+      i += 1;
+    }
+    // Not reached -- but in part because we don't
+    // complain about brace mismatches
+    return S_OK;
+  }
+
+  /**
    * String parser; bulk of the actual parser
    * Begins by detecting whether this is a new word
    * (previous token was a separator or another string)
@@ -387,9 +413,24 @@ struct Interp {
     }
 
     if (argv.size() < min || argv.size() > max) {
-      C_ERR("wrong number of args for " << name << " (expected " << min
-                                        << " to " << max << ")");
+      C_ERR("[" << name << "]: wrong number of args (expected " << min << " to "
+                << max << ")");
       return false;
+    }
+    return true;
+  }
+
+  /**
+   * Check whether an argument to a function is a valid integer
+   */
+  bool int_check(const string &name, const std::vector<string> &argv,
+                 size_t idx) {
+    const string &arg = argv[idx];
+    for (size_t i = 0; i < arg.length(); i++) {
+      if (!isdigit(arg[i])) {
+        C_ERR("[" << name << "]: argument " << idx << " is not an integer");
+        return false;
+      }
     }
     return true;
   }
@@ -413,9 +454,29 @@ struct Interp {
       return S_OK;
     };
 
-    register_command("puts", puts);
+    auto ifc = [](Interp &i, std::vector<string> &argv, void *privdata) {
+      if (!i.arity_check("if", argv, 3, 5)) {
+        return S_ERR;
+      }
 
+      // Evaluate condition
+      if (i.eval(argv[1]) != S_OK) {
+        return S_ERR;
+      }
+
+      // Branch condition
+
+      if (atoi(i.result.c_str())) {
+        return i.eval(argv[2]);
+      } else if (argv.size() == 5) {
+        return i.eval(argv[4]);
+      }
+      return S_OK;
+    };
+
+    register_command("puts", puts);
     register_command("set", set);
+    register_command("if", ifc);
   }
 
   //
