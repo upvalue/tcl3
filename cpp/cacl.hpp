@@ -25,6 +25,26 @@ enum TokenType {
   TK_UNKNOWN = 7,
 };
 
+struct escape_string {
+  escape_string(const std::string &s_) : s(s_) {}
+  const std::string &s;
+};
+
+inline std::ostream &operator<<(std::ostream &os, const escape_string &e) {
+  for (size_t i = 0; i < e.s.length(); i++) {
+    if (e.s[i] == '\n') {
+      os << "\\n";
+    } else if (e.s[i] == '\r') {
+      os << "\\r";
+    } else if (e.s[i] == '\t') {
+      os << "\\t";
+    } else {
+      os << e.s[i];
+    }
+  }
+  return os;
+}
+
 inline std::ostream &operator<<(std::ostream &os, TokenType t) {
 
   switch (t) {
@@ -286,8 +306,9 @@ struct Parser {
 
   Status next_token() {
     Status ret = _next_token();
-    C_TRACE_PARSER("token type: " << token << " token body: '" << token_body()
-                                  << "'");
+    std::cerr << "{\"type\": " << token << ", \"begin\": " << start
+              << ", \"end\": " << end << ", \"body\": \""
+              << escape_string(token_body()) << "\"}" << std::endl;
     return ret;
   }
 };

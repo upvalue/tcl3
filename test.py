@@ -1,4 +1,5 @@
 # test.py 
+
 # simple test suite for picol and ports of it
 # snapshot tests the parser
 

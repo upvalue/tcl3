@@ -1,6 +1,7 @@
 .PHONY: leaks
 
 CC := cc
+CFLAGS := -O3
 
 all: picol picol-parser picol-original
 
@@ -11,7 +12,7 @@ picol-parser: picol.c
 	${CC} -DPICOL_MAIN -DPICOL_TRACE_PARSER -g -o $@ $<
 
 picol-original: picol-original.c
-	${CC} -o $@ $<
+	${CC} $(CFLAGS) -o $@ $<
 
 leaks:
 	leaks --atExit -- ./picol empty.tcl
