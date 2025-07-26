@@ -94,6 +94,11 @@ inline std::ostream &operator<<(std::ostream &os, TokenType t) {
   _c_err_line_##__LINE__ << x;                                                 \
   result = _c_err_line_##__LINE__.str();
 
+#define C_CMD_ERR(i, x)                                                        \
+  std::ostringstream _c_cmd_err_line_##__LINE__;                               \
+  _c_cmd_err_line_##__LINE__ << x;                                             \
+  i.result = _c_cmd_err_line_##__LINE__.str();
+
 #ifndef C_TRACE
 #define C_TRACE C_TRACE_PARSER_BIT | C_TRACE_EVAL_BIT
 #endif
@@ -132,6 +137,7 @@ struct Parser {
   struct Save {
     Save(Parser *p_) : p(p_) { p->start = p->i; }
     ~Save() { p->end = p->i; }
+
     Parser *p;
   };
 
@@ -195,16 +201,19 @@ struct Parser {
    */
   Status parse_brace() {
     size_t level = 1;
-    Save save(this);
+    i += 1; // skip {
+    start = i;
     while (!done()) {
       if (current() == '\\') {
         i += 1;
       } else if (current() == '{') {
         level += 1;
       } else if (current() == '}') {
+        i += 1;
         level -= 1;
         if (level == 0) {
           token = TK_STR;
+          end = i - 1;
           return S_OK;
         }
       }
@@ -224,6 +233,10 @@ struct Parser {
   Status parse_string() {
     token = TK_STR;
     bool new_word = token == TK_SEP || token == TK_EOL || token == TK_STR;
+
+    if (new_word && current() == '{') {
+      return parse_brace();
+    }
 
     // Check whether we need to set inside quote and consume "
     if (new_word && current() == '"') {
@@ -457,6 +470,49 @@ struct Interp {
   }
 
   void register_core_commands() {
+
+    auto math = [](Interp &i, std::vector<string> &argv, void *privdata) {
+      if (!i.arity_check("math", argv, 3, 3)) {
+        return S_ERR;
+      }
+
+      int a, b, c = 0;
+
+      if (!i.int_check("math", argv, 1)) {
+        return S_ERR;
+      }
+      if (!i.int_check("math", argv, 2)) {
+        return S_ERR;
+      }
+
+      a = atoi(argv[1].c_str());
+      b = atoi(argv[2].c_str());
+
+      if (argv[0].size() == 2) {
+        if ((argv[0][0] == '=') && (argv[0][1] == '=')) {
+          c = a == b;
+        } else {
+          C_CMD_ERR(i, "[" << argv[0] << "]: unknown operator");
+          return S_ERR;
+        }
+      } else {
+        C_CMD_ERR(i, "[" << argv[0] << "]: unknown operator");
+        return S_ERR;
+      }
+
+      i.result = std::to_string(c);
+
+      // int a = std::strtoimax(argv[1].c_str(), nullptr, 10);
+      // int b = std::max(argv[2].c_str(), nullptr, 10);
+
+      /*if (argv[0][0] == '+') {
+        i.result = std::to_string(a + b);
+      } else if (argv[0][0] == '-') {
+        i.result = std::to_string(a - b);
+      }*/
+
+      return S_OK;
+    };
     auto puts = [](Interp &i, std::vector<string> &argv, void *privdata) {
       if (!i.arity_check("puts", argv, 2, 2)) {
         return S_ERR;
@@ -485,8 +541,9 @@ struct Interp {
         return S_ERR;
       }
 
-      // Branch condition
+      std::cout << "if result:" << i.result.c_str() << std::endl;
 
+      // Branch condition
       if (atoi(i.result.c_str())) {
         return i.eval(argv[2]);
       } else if (argv.size() == 5) {
@@ -498,6 +555,7 @@ struct Interp {
     register_command("puts", puts);
     register_command("set", set);
     register_command("if", ifc);
+    register_command("==", math);
   }
 
   //
@@ -551,7 +609,10 @@ struct Interp {
             return S_ERR;
           }
 
-          c->func(*this, argv, c->privdata);
+          Status s = c->func(*this, argv, c->privdata);
+          if (s != S_OK) {
+            return s;
+          }
         }
 
         // Clear arg vector for the next run and continue

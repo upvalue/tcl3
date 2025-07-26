@@ -1,1 +1,1 @@
-if 1 { puts hi } { puts bad }
+if {== 1 1} { puts hi } else { puts bad }
