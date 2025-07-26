@@ -1,13 +1,17 @@
 #ifndef _CACL_HPP
 #define _CACL_HPP
 
+#include <cstring>
 #include <functional>
 #include <iostream>
 #include <string>
 
+// TODO: Variables
+// TODO: More error handling
+
 namespace cacl {
 
-enum ReturnCode { C_OK = 0, C_ERR = 1, C_UNKNOWN = 2 };
+enum Status { S_OK = 0, S_ERR = 1, S_UNKNOWN = 2 };
 
 enum TokenType {
   TK_ESC = 0,
@@ -93,45 +97,70 @@ struct Parser {
 
   bool done() const { return i >= buffer.length(); }
   char current() const { return buffer.at(i); }
-  TokenType tokenType() const { return token; }
-
-  /*
-   * Saves place within the parser
-   */
-  template <typename Func> ReturnCode save(Func fn) {
-    start = i;
-    ReturnCode r = fn();
-    end = i;
-    return r;
-  }
+  TokenType token_type() const { return token; }
 
   /**
-   * Separator -- simply consumes non-newline whitespace
+   * Saves token place at the start of token
+   * and the end of the function that's generating it
    */
-  ReturnCode parseSep() {
+  struct Save {
+    Save(Parser *p_) : p(p_) { p->start = p->i; }
+    ~Save() { p->end = p->i; }
+    Parser *p;
+  };
+
+  /**
+   * Separator -- triggered on any non-newline whitespace or a
+   * semicolon and consumes all whitespace until next char or EOF
+   */
+  Status parse_sep() {
     token = TK_SEP;
-    return save([this]() {
-      while (!done() && (current() == ' ' || current() == '\t' ||
-                         current() == '\n' || current() == '\r')) {
-        i += 1;
-      }
-      return C_OK;
-    });
+    Save save(this);
+    while (!done() && (current() == ' ' || current() == '\t' ||
+                       current() == '\n' || current() == '\r')) {
+      i += 1;
+    }
+    return S_OK;
   }
 
   /**
-   * EOL
+   * End of line handlers
    */
-  ReturnCode parseEol() {
+  Status parse_eol() {
     token = TK_EOL;
-    return save([this]() {
-      while (!done() &&
-             (current() == ' ' || current() == '\t' || current() == '\n' ||
-              current() == '\r' || current() == ';')) {
-        i += 1;
+    Save save(this);
+    // Discard any whitespace or separators present at end of line
+    while (!done() &&
+           (current() == ' ' || current() == '\t' || current() == '\n' ||
+            current() == '\r' || current() == ';')) {
+      i += 1;
+    }
+    return S_OK;
+  }
+
+  /**
+   * Variable, parses $alpha1234_5 type strings
+   */
+  Status parse_var() {
+    // Skip $
+    i++;
+    Save save(this);
+    while (!done()) {
+      if (isalnum(current()) || current() == '_') {
+        i++;
+      } else {
+        break;
       }
-      return C_OK;
-    });
+    }
+
+    // Treat standalone $ as a string with only $ as its contents
+    if (start == i) {
+      token = TK_STR;
+    } else {
+      token = TK_VAR;
+    }
+
+    return S_OK;
   }
 
   /**
@@ -140,7 +169,7 @@ struct Parser {
    * (previous token was a separator or another string)
    * Handles starting brace beginning
    */
-  ReturnCode parseString() {
+  Status parse_string() {
     token = TK_STR;
     bool new_word = token == TK_SEP || token == TK_EOL || token == TK_STR;
 
@@ -150,44 +179,45 @@ struct Parser {
       i++;
     }
 
-    return save([this]() {
-      while (true) {
-        if (done()) {
-          token = TK_ESC;
-          return C_OK;
-        }
-        switch (current()) {
-        case ' ':
-        case '\t':
-        case '\n':
-        case '\r':
-        case ';': {
-          if (!insidequote) {
-            token = TK_ESC;
-            return C_OK;
-          }
-          break;
-        }
-        case '"': {
-          // If we're inside quote already this means it's time to escape
-          if (insidequote) {
-            token = TK_ESC;
-            insidequote = false;
-            i += 1;
-            return C_OK;
-          }
-        }
-        }
-
-        i += 1;
+    Save save(this);
+    while (true) {
+      if (done()) {
+        token = TK_ESC;
+        return S_OK;
       }
-      return C_OK;
-    });
+      switch (current()) {
+      case ' ':
+      case '\t':
+      case '\n':
+      case '\r':
+      case ';': {
+        if (!insidequote) {
+          token = TK_ESC;
+          return S_OK;
+        }
+        break;
+      }
+      case '$':
+        return parse_var();
+      case '"': {
+        // If we're inside quote already this means it's time to escape
+        if (insidequote) {
+          token = TK_ESC;
+          insidequote = false;
+          i += 1;
+          return S_OK;
+        }
+      }
+      }
+
+      i += 1;
+    }
+    return S_OK;
   }
 
-  string tokenBody() { return buffer.substr(start, end - start); }
+  string token_body() { return buffer.substr(start, end - start); }
 
-  ReturnCode _nextToken() {
+  Status _next_token() {
     while (!done()) {
       char c = current();
       switch (c) {
@@ -195,16 +225,16 @@ struct Parser {
       case '\t':
       case '\r':
         if (insidequote) {
-          return parseString();
+          return parse_string();
         }
-        return parseSep();
+        return parse_sep();
       case '\n':
       case ';':
-        return parseEol();
+        return parse_eol();
       case '"':
-        return parseString();
+        return parse_string();
       default:
-        return parseString();
+        return parse_string();
       }
     }
 
@@ -219,12 +249,12 @@ struct Parser {
       token = TK_EOF;
     }
 
-    return C_OK;
+    return S_OK;
   }
 
-  ReturnCode nextToken() {
-    ReturnCode ret = _nextToken();
-    C_TRACE_PARSER("token type: " << token << " token body: '" << tokenBody()
+  Status next_token() {
+    Status ret = _next_token();
+    C_TRACE_PARSER("token type: " << token << " token body: '" << token_body()
                                   << "'");
     return ret;
   }
@@ -232,8 +262,8 @@ struct Parser {
 
 struct Interp;
 
-typedef ReturnCode(cmd_func_t)(Interp *i, std::vector<string> &argv,
-                               void *privdata);
+typedef Status(cmd_func_t)(Interp &i, std::vector<string> &argv,
+                           void *privdata);
 
 struct Cmd {
   Cmd(const string &name_, cmd_func_t *func_, void *privdata_, Cmd *next_)
@@ -249,14 +279,75 @@ struct Cmd {
 struct Interp {
   Cmd *commands;
   string result;
-  string errbuf;
 
   Interp() : commands(0) {}
 
-  ReturnCode eval(const string &str) {
+  //
+  ////// COMMANDS & VARIABLES
+  //
+
+  Cmd *get_command(const string &name) const {
+    for (Cmd *c = commands; c != nullptr; c = c->next) {
+      if (c->name.compare(name) == 0) {
+        return c;
+      }
+    }
+    return nullptr;
+  }
+
+  Status register_command(const string &name, cmd_func_t fn,
+                          void *privdata = nullptr) {
+    if (get_command(name) != nullptr) {
+      std::string err("command already defined: '");
+      err += name;
+      err += "'";
+      result = err;
+      return S_ERR;
+    }
+    Cmd *cmd = new Cmd(name, fn, privdata, commands);
+    commands = cmd;
+    return S_OK;
+  }
+
+  void set_var(const string &name, const string &val) {
+    std::cout << "set var" << std::endl;
+    // TODO: Implement
+  }
+
+  //
+  ////// STANDARD LIBRARY
+  //
+
+  void register_core_commands() {
+    auto puts = [](Interp &i, std::vector<string> &argv, void *privdata) {
+      if (argv.size() != 2) {
+        return S_ERR;
+      }
+      std::cout << argv[1] << std::endl;
+      return S_OK;
+    };
+
+    auto set = [](Interp &i, std::vector<string> &argv, void *privdata) {
+      if (argv.size() != 3) {
+        return S_ERR;
+      }
+      i.set_var(argv[1], argv[2]);
+      return S_OK;
+    };
+
+    register_command("puts", puts);
+
+    register_command("set", set);
+  }
+
+  //
+  ////// EVALUATION
+  //
+
+  Status eval(const string &str) {
     result = "";
     Parser p(str);
-    ReturnCode ret = C_OK;
+    Status ret = S_OK;
 
     // Tracks command and argument
     std::vector<string> argv;
@@ -266,9 +357,9 @@ struct Interp {
       // load bearing
       TokenType prevtype = p.token;
 
-      ret = p.nextToken();
+      ret = p.next_token();
       // Exit if there's a parser error
-      if (ret != C_OK) {
+      if (ret != S_OK) {
         return ret;
       }
 
@@ -295,15 +386,15 @@ struct Interp {
         // call it with the value otherwise
         // return an error
         if (argv.size()) {
-          if ((c = getCommand(argv[0])) == nullptr) {
-            errbuf.clear();
-            errbuf += "command not found: '";
-            errbuf += argv[0];
-            errbuf += "'";
-            return C_ERR;
+          if ((c = get_command(argv[0])) == nullptr) {
+            std::string err("command not found: '");
+            err += argv[0];
+            err += '"';
+            result = err;
+            return S_ERR;
           }
 
-          c->func(this, argv, c->privdata);
+          c->func(*this, argv, c->privdata);
         }
 
         // Clear arg vector for the next run and continue
@@ -314,44 +405,12 @@ struct Interp {
       // If last token was a separator or EOL, push the final token body
       // to the argument vector and continue
       if (prevtype == TK_SEP || prevtype == TK_EOL) {
-        argv.push_back(p.tokenBody());
+        argv.push_back(p.token_body());
       } else {
         std::cout << "interpolation woah" << std::endl;
       }
     }
-    return C_OK;
-  }
-
-  Cmd *getCommand(const string &name) const {
-    for (Cmd *c = commands; c != nullptr; c = c->next) {
-      if (c->name.compare(name) == 0) {
-        return c;
-      }
-    }
-    return nullptr;
-  }
-
-  ReturnCode register_command(const string &name, cmd_func_t fn,
-                              void *privdata = nullptr) {
-    Cmd *chk = getCommand(name);
-    if (chk != nullptr) {
-      errbuf = "command already defied";
-      return C_ERR;
-    }
-    Cmd *cmd = new Cmd(name, fn, privdata, commands);
-    commands = cmd;
-    return C_OK;
-  }
-
-  void register_core_commands() {
-    register_command("puts",
-                     [](Interp *i, std::vector<string> &argv, void *privdata) {
-                       if (argv.size() != 2) {
-                         return C_ERR;
-                       }
-                       std::cout << argv[1] << std::endl;
-                       return C_OK;
-                     });
+    return S_OK;
   }
 };
 

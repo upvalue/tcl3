@@ -16,9 +16,9 @@ int main(int argc, char *argv[]) {
   i.register_core_commands();
 
   i.register_command(
-      "testret", [](Interp *i, std::vector<std::string> &argv, void *privdata) {
+      "testret", [](Interp &i, std::vector<std::string> &argv, void *privdata) {
         std::cout << "it got called!" << std::endl;
-        return C_OK;
+        return S_OK;
       });
 
   // Open and read the file
@@ -35,13 +35,11 @@ int main(int argc, char *argv[]) {
   file.close();
 
   // Evaluate the file content
-  ReturnCode result = i.eval(content);
-  if (result != C_OK) {
-    std::cerr << "Error evaluating file: " << i.errbuf << std::endl;
+  Status s = i.eval(content);
+  if (s != S_OK) {
+    std::cerr << "Error evaluating file: " << i.result << std::endl;
     return 1;
   }
-
-  std::cout << "errbuf: " << i.errbuf << std::endl;
 
   // Print result if any
   if (!i.result.empty()) {
