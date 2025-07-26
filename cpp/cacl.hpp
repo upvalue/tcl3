@@ -68,6 +68,7 @@ inline std::ostream &operator<<(std::ostream &os, TokenType t) {
 #define C_TRACE C_TRACE_PARSER_BIT | C_TRACE_EVAL_BIT
 #endif
 
+// Typedef std::string to make it easier to experiment with drop in replacements
 typedef std::string string;
 
 struct Parser {
@@ -110,8 +111,8 @@ struct Parser {
   ReturnCode parseSep() {
     token = TK_SEP;
     return save([this]() {
-      while (!done() &&
-             (current() == '\t' || current() == '\n' || current() == '\r')) {
+      while (!done() && (current() == ' ' || current() == '\t' ||
+                         current() == '\n' || current() == '\r')) {
         i += 1;
       }
       return C_OK;
@@ -156,6 +157,7 @@ struct Parser {
           return C_OK;
         }
         switch (current()) {
+        case ' ':
         case '\t':
         case '\n':
         case '\r':
@@ -192,6 +194,9 @@ struct Parser {
       case ' ':
       case '\t':
       case '\r':
+        if (insidequote) {
+          return parseString();
+        }
         return parseSep();
       case '\n':
       case ';':
@@ -252,15 +257,22 @@ struct Interp {
     result = "";
     Parser p(str);
     ReturnCode ret = C_OK;
+
+    // Tracks command and argument
     std::vector<string> argv;
+
     while (1) {
+      // Previous token type -- note that the parser default value (TK_EOL) is
+      // load bearing
       TokenType prevtype = p.token;
+
       ret = p.nextToken();
-      std::cout << "token: " << p.token << std::endl;
+      // Exit if there's a parser error
       if (ret != C_OK) {
         return ret;
       }
 
+      // Exit if we're at EOF
       if (p.token == TK_EOF) {
         break;
       }
@@ -268,12 +280,20 @@ struct Interp {
       if (p.token == TK_CMD) {
         std::cout << "got command!" << std::endl;
       } else if (p.token == TK_ESC) {
+        // No escape handling
+      } else if (p.token == TK_SEP) {
+        prevtype = p.token;
+        continue;
       }
 
+      // Once we hit EOL, we should have a command to evaluate
       if (p.token == TK_EOL) {
         Cmd *c;
         prevtype = p.token;
 
+        // Look up the command; if we find one,
+        // call it with the value otherwise
+        // return an error
         if (argv.size()) {
           if ((c = getCommand(argv[0])) == nullptr) {
             errbuf.clear();
@@ -286,10 +306,13 @@ struct Interp {
           c->func(this, argv, c->privdata);
         }
 
+        // Clear arg vector for the next run and continue
         argv.clear();
         continue;
       }
 
+      // If last token was a separator or EOL, push the final token body
+      // to the argument vector and continue
       if (prevtype == TK_SEP || prevtype == TK_EOL) {
         argv.push_back(p.tokenBody());
       } else {
@@ -320,7 +343,16 @@ struct Interp {
     return C_OK;
   }
 
-  void register_core_commands() {}
+  void register_core_commands() {
+    register_command("puts",
+                     [](Interp *i, std::vector<string> &argv, void *privdata) {
+                       if (argv.size() != 2) {
+                         return C_ERR;
+                       }
+                       std::cout << argv[1] << std::endl;
+                       return C_OK;
+                     });
+  }
 };
 
 } // namespace cacl

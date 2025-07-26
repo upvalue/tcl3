@@ -1,1 +1,1 @@
-notexist
+puts 5
