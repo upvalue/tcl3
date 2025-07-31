@@ -28,6 +28,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int parser_stderr = 0;
+static size_t eval_invokes = 0;
+
 enum
 {
     PICOL_OK,
@@ -412,17 +415,18 @@ void print_escaped_string(char *s)
 int picolGetToken(struct picolParser *p)
 {
     int ret = _picolGetToken(p);
-#ifdef PICOL_TRACE_PARSER
-    fprintf(stderr, "{\"type\": \"");
-    printtoken(p->type);
-    char *body = calloc(1, (p->end - p->start) + 2);
-    strncpy(body, p->start, (p->end - p->start) + 1);
-    body[(p->end - p->start) + 1] = '\0';
-    fprintf(stderr, "\", \"begin\": %ld, \"end\": %ld, \"body\": \"", p->start - p->text, p->end - p->text + 1);
-    print_escaped_string(body);
-    fprintf(stderr, "\"}\n");
-    free(body);
-#endif
+    if (parser_stderr)
+    {
+        fprintf(stderr, "{\"type\": \"");
+        printtoken(p->type);
+        char *body = calloc(1, (p->end - p->start) + 2);
+        strncpy(body, p->start, (p->end - p->start) + 1);
+        body[(p->end - p->start) + 1] = '\0';
+        fprintf(stderr, "\", \"begin\": %ld, \"end\": %ld, \"body\": \"", p->start - p->text, p->end - p->text + 1);
+        print_escaped_string(body);
+        fprintf(stderr, "\"}\n");
+        free(body);
+    }
     return ret;
 }
 
@@ -522,6 +526,7 @@ int picolRegisterCommand(struct picolInterp *i, char *name, picolCmdFunc f, void
 /* EVAL! */
 int picolEval(struct picolInterp *i, char *t)
 {
+    eval_invokes++;
     struct picolParser p;
     int argc = 0, j;
     char **argv = NULL;
@@ -837,10 +842,13 @@ void picolRegisterCoreCommands(struct picolInterp *i)
     picolRegisterCommand(i, "return", picolCommandReturn, NULL);
 }
 
-#ifdef PICOL_MAIN
-
 int main(int argc, char **argv)
 {
+
+    if (getenv("PARSER_STDERR"))
+    {
+        parser_stderr = 1;
+    }
 
     struct picolInterp interp;
     picolInitInterp(&interp);
@@ -874,8 +882,8 @@ int main(int argc, char **argv)
         if (picolEval(&interp, buf) != PICOL_OK)
             printf("%s\n", interp.result);
     }
+
+    printf("eval_invokes: %zu\n", eval_invokes);
     picolCloseInterp(&interp);
     return 0;
 }
-
-#endif

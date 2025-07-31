@@ -80,17 +80,9 @@ inline std::ostream &operator<<(std::ostream &os, TokenType t) {
   return os;
 }
 
-#define C_TRACE_PARSER_BIT 0x1
-#define C_TRACE_EVAL_BIT 0x2
-
 #define C_TRACE_PARSER(x)                                                      \
-  if (C_TRACE & C_TRACE_PARSER_BIT) {                                          \
+  if (trace_parser) {                                                          \
     std::cout << "at: " << i << ' ' << x << std::endl;                         \
-  }
-
-#define C_TRACE_EVAL(x)                                                        \
-  if (C_TRACE & C_TRACE_EVAL_BIT) {                                            \
-    std::cout << x << std::endl;                                               \
   }
 
 #define C_ERR(x)                                                               \
@@ -103,20 +95,17 @@ inline std::ostream &operator<<(std::ostream &os, TokenType t) {
   _c_cmd_err_line_##__LINE__ << x;                                             \
   i.result = _c_cmd_err_line_##__LINE__.str();
 
-#ifndef C_TRACE
-#define C_TRACE C_TRACE_PARSER_BIT | C_TRACE_EVAL_BIT
-#endif
-
 // Typedef std::string to make it easier to experiment with drop in replacements
 typedef std::string string;
 
 struct Parser {
-  Parser(const string &buffer_)
+  Parser(const string &buffer_, bool trace_parser_)
       : buffer(buffer_), result(""), i(0), start(0), end(0), token(TK_EOL),
-        insidequote(false) {}
+        insidequote(false), trace_parser(trace_parser_) {}
 
   string buffer;
   string result;
+  bool trace_parser;
 
   // String iterator
   size_t i;
@@ -375,9 +364,11 @@ struct Parser {
 
   Status next_token() {
     Status ret = _next_token();
-    std::cerr << "{\"type\": " << token << ", \"begin\": " << start
-              << ", \"end\": " << end << ", \"body\": \""
-              << escape_string(token_body()) << "\"}" << std::endl;
+    if (trace_parser) {
+      std::cerr << "{\"type\": " << token << ", \"begin\": " << start
+                << ", \"end\": " << end << ", \"body\": \""
+                << escape_string(token_body()) << "\"}" << std::endl;
+    }
     return ret;
   }
 };
@@ -440,8 +431,11 @@ struct Interp {
   string result;
   CallFrame *callframe;
   size_t level;
+  bool trace_parser;
 
-  Interp() : level(0), commands(nullptr), callframe(new CallFrame()) {}
+  Interp()
+      : level(0), commands(nullptr), callframe(new CallFrame()),
+        trace_parser(false) {}
 
   ~Interp() {
     CallFrame *cf = callframe;
@@ -600,6 +594,36 @@ struct Interp {
 
     register_command("if", ifc);
 
+    auto whilec = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
+      if (!i.arity_check("while", argv, 3, 3)) {
+        return S_ERR;
+      }
+
+      while (1) {
+        Status s = i.eval(argv[1]);
+        if (s != S_OK) {
+          return s;
+        }
+
+        if (atoi(i.result.c_str())) {
+          s = i.eval(argv[2]);
+          if (s == S_CONTINUE || s == S_OK) {
+            continue;
+          } else if (s == S_BREAK) {
+            return S_OK;
+          } else {
+            return s;
+          }
+        } else {
+          return S_OK;
+        }
+      }
+
+      return S_OK;
+    };
+
+    register_command("while", whilec);
+
     // break & continue
 
     auto retcodes = [](Interp &i, std::vector<string> &argv,
@@ -715,9 +739,11 @@ struct Interp {
   ////// EVALUATION
   //
 
+  size_t eval_invokes = 0;
   Status eval(const string &str) {
+    eval_invokes++;
     result = "";
-    Parser p(str);
+    Parser p(str, trace_parser);
     Status ret = S_OK;
 
     // Tracks command and argument
@@ -792,8 +818,11 @@ struct Interp {
       if (prevtype == TK_SEP || prevtype == TK_EOL) {
         argv.push_back(t);
       } else {
-        std::cout << "interpolation woah" << std::endl;
+        string new_argv(argv[argv.size() - 1]);
+        new_argv += t;
+        argv[argv.size() - 1] = new_argv;
       }
+      prevtype = p.token;
     }
     return S_OK;
   }
@@ -849,8 +878,5 @@ inline Status call_proc(Interp &i, std::vector<string> &argv, Privdata *pd_) {
 }
 
 } // namespace tcl
-
-#undef C_TRACE_PARSER
-#undef C_TRACE_EVAL
 
 #endif

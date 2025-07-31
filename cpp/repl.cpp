@@ -11,7 +11,14 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  bool trace_parser = false;
+
+  if (getenv("PARSER_STDERR")) {
+    trace_parser = true;
+  }
+
   Interp i;
+  i.trace_parser = trace_parser;
   i.register_core_commands();
 
   i.register_command("testret", [](Interp &i, std::vector<std::string> &argv,
@@ -40,8 +47,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  Var *x = i.get_var("x");
-
+  std::cout << "eval_invokes: " << i.eval_invokes << std::endl;
   // Print result if any
   if (!i.result.empty()) {
     // std::cout << i.result << std::endl;

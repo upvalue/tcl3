@@ -1,12 +1,12 @@
 CXX := clang++
 CC := clang
-CXXFLAGS := -std=c++17
+CXXFLAGS := -std=c++17 -O3
 
 repl: repl.cpp vendor/bestline/bestline.o tcl.hpp
-	$(CXX) -Ivendor/bestline -o repl repl.cpp vendor/bestline/bestline.o
+	$(CXX) $(CXXFLAGS) -Ivendor/bestline -o repl repl.cpp vendor/bestline/bestline.o
 
 repl-malloc-track: repl.cpp vendor/bestline/bestline.o tcl.hpp
-	$(CXX) $(shell pkg-config --libs jemalloc) -Ivendor/bestline -o repl repl.cpp vendor/bestline/bestline.o
+	$(CXX) $(shell pkg-config --libs jemalloc) -Ivendor/bestline -o $@ repl.cpp vendor/bestline/bestline.o
 
 test: test.cpp tcl.hpp
 	$(CXX) $(CXXFLAGS) -Ivendor/bestline -o test $<
