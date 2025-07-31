@@ -1,7 +1,7 @@
 .PHONY: leaks
 
 CC := cc
-CFLAGS := -O3
+CFLAGS := -O3 -g3
 
 all: picol picol-original
 

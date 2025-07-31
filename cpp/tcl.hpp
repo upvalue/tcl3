@@ -6,6 +6,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 // TODO: replace atoi with system word sized parser
 // TODO: try to reduce allocs with string_view
@@ -97,13 +98,14 @@ inline std::ostream &operator<<(std::ostream &os, TokenType t) {
 
 // Typedef std::string to make it easier to experiment with drop in replacements
 typedef std::string string;
+typedef std::string_view string_view;
 
 struct Parser {
-  Parser(const string &buffer_, bool trace_parser_)
+  Parser(const string_view &buffer_, bool trace_parser_)
       : buffer(buffer_), result(""), i(0), start(0), end(0), token(TK_EOL),
         insidequote(false), trace_parser(trace_parser_) {}
 
-  string buffer;
+  string_view buffer;
   string result;
   bool trace_parser;
 
@@ -317,7 +319,9 @@ struct Parser {
     return S_OK;
   }
 
-  string token_body() { return buffer.substr(start, end - start); }
+  string_view token_body() const {
+    return string_view(buffer).substr(start, end - start);
+  }
 
   Status _next_token() {
     while (!done()) {
@@ -367,7 +371,8 @@ struct Parser {
     if (trace_parser) {
       std::cerr << "{\"type\": " << token << ", \"begin\": " << start
                 << ", \"end\": " << end << ", \"body\": \""
-                << escape_string(token_body()) << "\"}" << std::endl;
+                << escape_string(std::string(token_body())) << "\"}"
+                << std::endl;
     }
     return ret;
   }
@@ -413,10 +418,13 @@ struct Var {
 struct CallFrame {
   CallFrame() : vars(nullptr), parent(nullptr) {}
   ~CallFrame() {
-    for (Var *v = vars; v != nullptr; v = v->next) {
+    Var *v = vars;
+    while (v != nullptr) {
+      Var *next = v->next;
       delete v->name;
       delete v->val;
       delete v;
+      v = next;
     }
   }
   Var *vars;
@@ -488,7 +496,7 @@ struct Interp {
   /**
    * Get a variable by name
    */
-  Var *get_var(const string &name) {
+  Var *get_var(const std::string_view &name) {
     for (Var *v = callframe->vars; v != nullptr; v = v->next) {
       if (v->name->compare(name) == 0) {
         return v;
@@ -739,9 +747,7 @@ struct Interp {
   ////// EVALUATION
   //
 
-  size_t eval_invokes = 0;
-  Status eval(const string &str) {
-    eval_invokes++;
+  Status eval(const string_view &str) {
     result = "";
     Parser p(str, trace_parser);
     Status ret = S_OK;
@@ -761,7 +767,7 @@ struct Interp {
         return ret;
       }
 
-      std::string t = p.token_body();
+      std::string_view t = p.token_body();
 
       // Exit if we're at EOF
       if (p.token == TK_EOF) {
@@ -816,7 +822,7 @@ struct Interp {
       // If last token was a separator or EOL, push the final token body
       // to the argument vector and continue
       if (prevtype == TK_SEP || prevtype == TK_EOL) {
-        argv.push_back(t);
+        argv.push_back(std::string(t));
       } else {
         string new_argv(argv[argv.size() - 1]);
         new_argv += t;
