@@ -1,0 +1,6 @@
+set x 0
+while {< $x 10} {
+  set x [+ $x 1]
+}
+
+puts $x

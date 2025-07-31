@@ -1,5 +1,5 @@
-#ifndef _CACL_HPP
-#define _CACL_HPP
+#ifndef _TCL_HPP
+#define _TCL_HPP
 
 #include <cstring>
 #include <functional>
@@ -8,12 +8,13 @@
 #include <string>
 
 // TODO: replace atoi with system word sized parser
-// TODO: try to reduce allocs with stirng_view
-// TOOD: try to simplify parser internally
+// TODO: try to reduce allocs with string_view
+// TOOD: try to simplify parser internally and externally
+// TODO: proc, fib demo
 
-namespace cacl {
+namespace tcl {
 
-enum Status { S_OK = 0, S_ERR = 1, S_UNKNOWN = 2 };
+enum Status { S_OK = 0, S_ERR = 1, S_RETURN = 2, S_BREAK = 3, S_CONTINUE = 4 };
 
 enum TokenType {
   TK_ESC = 0,
@@ -26,6 +27,9 @@ enum TokenType {
   TK_UNKNOWN = 7,
 };
 
+/*
+ * Print a string but escape whitespace
+ */
 struct escape_string {
   escape_string(const std::string &s_) : s(s_) {}
   const std::string &s;
@@ -47,7 +51,6 @@ inline std::ostream &operator<<(std::ostream &os, const escape_string &e) {
 }
 
 inline std::ostream &operator<<(std::ostream &os, TokenType t) {
-
   switch (t) {
   case TK_ESC:
     os << "TK_ESC";
@@ -172,7 +175,6 @@ struct Parser {
   }
 
   Status parse_comment() {
-    std::cout << "comment" << std::endl;
     while (!done() && current() != '\n') {
       i += 1;
     }
@@ -382,17 +384,33 @@ struct Parser {
 
 struct Interp;
 
+struct Privdata {
+  virtual ~Privdata() {}
+};
+
+struct ProcPrivdata : Privdata {
+  ProcPrivdata(string *args_, string *body_) : args(args_), body(body_) {}
+
+  ~ProcPrivdata() {
+    delete args;
+    delete body;
+  }
+
+  string *args;
+  string *body;
+};
+
 typedef Status(cmd_func_t)(Interp &i, std::vector<string> &argv,
-                           void *privdata);
+                           Privdata *privdata);
 
 struct Cmd {
-  Cmd(const string &name_, cmd_func_t *func_, void *privdata_, Cmd *next_)
+  Cmd(const string &name_, cmd_func_t *func_, Privdata *privdata_, Cmd *next_)
       : name(name_), func(func_), privdata(privdata_), next(next_) {}
   ~Cmd() {}
 
   string name;
   cmd_func_t *func;
-  void *privdata;
+  Privdata *privdata;
   Cmd *next;
 };
 
@@ -414,6 +432,9 @@ struct CallFrame {
   CallFrame *parent;
 };
 
+inline Status call_proc(Interp &i, std::vector<string> &argv,
+                        Privdata *privdata);
+
 struct Interp {
   Cmd *commands;
   string result;
@@ -423,17 +444,29 @@ struct Interp {
   Interp() : level(0), commands(nullptr), callframe(new CallFrame()) {}
 
   ~Interp() {
-    /*
-    TODO segfault and cleanup
-    for (CallFrame *cf = callframe; cf != nullptr; cf = cf->parent) {
+    CallFrame *cf = callframe;
+    while (cf) {
+      CallFrame *next = cf->parent;
       delete cf;
+      cf = next;
     }
-      */
+
+    for (Cmd *c = commands; c != nullptr; c = c->next) {
+      delete c->privdata;
+      delete c;
+    }
   }
 
   //
   ////// COMMANDS & VARIABLES
   //
+
+  void drop_call_frame() {
+    CallFrame *cf = callframe;
+    CallFrame *parent = cf->parent;
+    delete cf;
+    callframe = parent;
+  }
 
   Cmd *get_command(const string &name) const {
     for (Cmd *c = commands; c != nullptr; c = c->next) {
@@ -445,7 +478,7 @@ struct Interp {
   }
 
   Status register_command(const string &name, cmd_func_t fn,
-                          void *privdata = nullptr) {
+                          Privdata *privdata = nullptr) {
     if (get_command(name) != nullptr) {
       std::string err("command already defined: '");
       err += name;
@@ -523,8 +556,103 @@ struct Interp {
   }
 
   void register_core_commands() {
+    auto puts = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
+      if (!i.arity_check("puts", argv, 2, 2)) {
+        return S_ERR;
+      }
 
-    auto math = [](Interp &i, std::vector<string> &argv, void *privdata) {
+      std::cout << argv[1] << std::endl;
+      return S_OK;
+    };
+
+    auto set = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
+      if (!i.arity_check("set", argv, 3, 3)) {
+        return S_ERR;
+      }
+
+      i.set_var(argv[1], argv[2]);
+      return S_OK;
+    };
+
+    register_command("puts", puts);
+    register_command("set", set);
+
+    // Flow control and procedures
+
+    auto ifc = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
+      if (!i.arity_check("if", argv, 3, 5)) {
+        return S_ERR;
+      }
+
+      // Evaluate condition
+      if (i.eval(argv[1]) != S_OK) {
+        return S_ERR;
+      }
+
+      // Branch condition
+      if (atoi(i.result.c_str())) {
+        return i.eval(argv[2]);
+      } else if (argv.size() == 5) {
+        return i.eval(argv[4]);
+      }
+      return S_OK;
+    };
+
+    register_command("if", ifc);
+
+    // break & continue
+
+    auto retcodes = [](Interp &i, std::vector<string> &argv,
+                       Privdata *privdata) {
+      if (!i.arity_check("retcodes", argv, 1, 1)) {
+        return S_ERR;
+      }
+
+      if (argv[0].compare("break") == 0) {
+        return S_BREAK;
+      } else if (argv[0].compare("continue") == 0) {
+        return S_CONTINUE;
+      }
+
+      return S_OK;
+    };
+
+    register_command("break", retcodes);
+    register_command("continue", retcodes);
+
+    auto proc = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
+      if (!i.arity_check("proc", argv, 4, 4)) {
+        return S_ERR;
+      }
+
+      ProcPrivdata *ppd =
+          new ProcPrivdata(new string(argv[2]), new string(argv[3]));
+
+      i.register_command(argv[1], call_proc, ppd);
+
+      return S_OK;
+    };
+
+    register_command("proc", proc);
+
+    auto ret = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
+      if (!i.arity_check("return", argv, 1, 2)) {
+        return S_ERR;
+      }
+      i.result = argv[1];
+      return S_RETURN;
+    };
+
+    register_command("return", ret);
+
+    // todo proc
+    // todo while
+    // todo break
+    // todo continue
+    // todo return
+
+    ///// Math handling
+    auto math = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
       if (!i.arity_check("math", argv, 3, 3)) {
         return S_ERR;
       }
@@ -570,50 +698,7 @@ struct Interp {
 
       return S_OK;
     };
-    auto puts = [](Interp &i, std::vector<string> &argv, void *privdata) {
-      if (!i.arity_check("puts", argv, 2, 2)) {
-        return S_ERR;
-      }
 
-      std::cout << argv[1] << std::endl;
-      return S_OK;
-    };
-
-    auto set = [](Interp &i, std::vector<string> &argv, void *privdata) {
-      if (!i.arity_check("set", argv, 3, 3)) {
-        return S_ERR;
-      }
-
-      i.set_var(argv[1], argv[2]);
-      return S_OK;
-    };
-
-    auto ifc = [](Interp &i, std::vector<string> &argv, void *privdata) {
-      if (!i.arity_check("if", argv, 3, 5)) {
-        return S_ERR;
-      }
-
-      // Evaluate condition
-      if (i.eval(argv[1]) != S_OK) {
-        return S_ERR;
-      }
-
-      std::cout << "if result:" << i.result.c_str() << std::endl;
-
-      // Branch condition
-      if (atoi(i.result.c_str())) {
-        return i.eval(argv[2]);
-      } else if (argv.size() == 5) {
-        return i.eval(argv[4]);
-      }
-      return S_OK;
-    };
-
-    register_command("puts", puts);
-    register_command("set", set);
-    register_command("if", ifc);
-
-    // Math
     register_command("+", math);
     register_command("-", math);
     register_command("*", math);
@@ -714,7 +799,56 @@ struct Interp {
   }
 };
 
-} // namespace cacl
+inline Status call_proc(Interp &i, std::vector<string> &argv, Privdata *pd_) {
+  ProcPrivdata *pd = static_cast<ProcPrivdata *>(pd_);
+  // Set up a new call frame
+  CallFrame *cf = new CallFrame();
+  cf->parent = i.callframe;
+  i.callframe = cf;
+
+  size_t arity = 0;
+  string *alist = pd->args;
+  string *body = pd->body;
+
+  // Parse arguments list while checking arity
+  size_t j = 0, start = 0;
+  while (true) {
+    start = j;
+    for (; j < alist->size(); j++) {
+      char c = alist->at(j);
+      if (c == ' ') {
+        break;
+      }
+    }
+
+    // Got argument
+    i.set_var(alist->substr(start, j - start), argv[arity + 1]);
+
+    arity++;
+
+    if (j >= alist->size())
+      break;
+  }
+
+  Status s = S_OK;
+  if (arity != argv.size() - 1) {
+    C_CMD_ERR(i, "wrong number of arguments for " << argv[0] << " got "
+                                                  << argv.size() << " expected "
+                                                  << arity);
+    s = S_ERR;
+  } else {
+    s = i.eval(*body);
+    if (s == S_RETURN) {
+      s = S_OK;
+    }
+  }
+
+  i.drop_call_frame();
+
+  return S_OK;
+}
+
+} // namespace tcl
 
 #undef C_TRACE_PARSER
 #undef C_TRACE_EVAL

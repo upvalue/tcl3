@@ -5,3 +5,4 @@
 /c/repl
 /c/test
 *.o
+*dSYM

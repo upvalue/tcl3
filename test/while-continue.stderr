@@ -1,0 +1,155 @@
+{"type": "TK_ESC", "begin": 0, "end": 3, "body": "set"}
+{"type": "TK_SEP", "begin": 3, "end": 4, "body": " "}
+{"type": "TK_ESC", "begin": 4, "end": 5, "body": "x"}
+{"type": "TK_SEP", "begin": 5, "end": 6, "body": " "}
+{"type": "TK_ESC", "begin": 6, "end": 7, "body": "0"}
+{"type": "TK_EOL", "begin": 7, "end": 8, "body": "\n"}
+{"type": "TK_ESC", "begin": 8, "end": 13, "body": "while"}
+{"type": "TK_SEP", "begin": 13, "end": 14, "body": " "}
+{"type": "TK_STR", "begin": 15, "end": 21, "body": "< $x 5"}
+{"type": "TK_SEP", "begin": 22, "end": 23, "body": " "}
+{"type": "TK_STR", "begin": 24, "end": 74, "body": "\n  set x [+ $x 1]\n  puts $x\n  continue\n  puts bad\n"}
+{"type": "TK_EOL", "begin": 75, "end": 77, "body": "\n\n"}
+{"type": "TK_ESC", "begin": 0, "end": 1, "body": "<"}
+{"type": "TK_SEP", "begin": 1, "end": 2, "body": " "}
+{"type": "TK_VAR", "begin": 3, "end": 4, "body": "x"}
+{"type": "TK_SEP", "begin": 4, "end": 5, "body": " "}
+{"type": "TK_ESC", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOL", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOF", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOL", "begin": 0, "end": 3, "body": "\n  "}
+{"type": "TK_ESC", "begin": 3, "end": 6, "body": "set"}
+{"type": "TK_SEP", "begin": 6, "end": 7, "body": " "}
+{"type": "TK_ESC", "begin": 7, "end": 8, "body": "x"}
+{"type": "TK_SEP", "begin": 8, "end": 9, "body": " "}
+{"type": "TK_CMD", "begin": 10, "end": 16, "body": "+ $x 1"}
+{"type": "TK_ESC", "begin": 0, "end": 1, "body": "+"}
+{"type": "TK_SEP", "begin": 1, "end": 2, "body": " "}
+{"type": "TK_VAR", "begin": 3, "end": 4, "body": "x"}
+{"type": "TK_SEP", "begin": 4, "end": 5, "body": " "}
+{"type": "TK_ESC", "begin": 5, "end": 6, "body": "1"}
+{"type": "TK_EOL", "begin": 5, "end": 6, "body": "1"}
+{"type": "TK_EOF", "begin": 5, "end": 6, "body": "1"}
+{"type": "TK_EOL", "begin": 17, "end": 20, "body": "\n  "}
+{"type": "TK_ESC", "begin": 20, "end": 24, "body": "puts"}
+{"type": "TK_SEP", "begin": 24, "end": 25, "body": " "}
+{"type": "TK_VAR", "begin": 26, "end": 27, "body": "x"}
+{"type": "TK_EOL", "begin": 27, "end": 30, "body": "\n  "}
+{"type": "TK_ESC", "begin": 30, "end": 38, "body": "continue"}
+{"type": "TK_EOL", "begin": 38, "end": 41, "body": "\n  "}
+{"type": "TK_ESC", "begin": 0, "end": 1, "body": "<"}
+{"type": "TK_SEP", "begin": 1, "end": 2, "body": " "}
+{"type": "TK_VAR", "begin": 3, "end": 4, "body": "x"}
+{"type": "TK_SEP", "begin": 4, "end": 5, "body": " "}
+{"type": "TK_ESC", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOL", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOF", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOL", "begin": 0, "end": 3, "body": "\n  "}
+{"type": "TK_ESC", "begin": 3, "end": 6, "body": "set"}
+{"type": "TK_SEP", "begin": 6, "end": 7, "body": " "}
+{"type": "TK_ESC", "begin": 7, "end": 8, "body": "x"}
+{"type": "TK_SEP", "begin": 8, "end": 9, "body": " "}
+{"type": "TK_CMD", "begin": 10, "end": 16, "body": "+ $x 1"}
+{"type": "TK_ESC", "begin": 0, "end": 1, "body": "+"}
+{"type": "TK_SEP", "begin": 1, "end": 2, "body": " "}
+{"type": "TK_VAR", "begin": 3, "end": 4, "body": "x"}
+{"type": "TK_SEP", "begin": 4, "end": 5, "body": " "}
+{"type": "TK_ESC", "begin": 5, "end": 6, "body": "1"}
+{"type": "TK_EOL", "begin": 5, "end": 6, "body": "1"}
+{"type": "TK_EOF", "begin": 5, "end": 6, "body": "1"}
+{"type": "TK_EOL", "begin": 17, "end": 20, "body": "\n  "}
+{"type": "TK_ESC", "begin": 20, "end": 24, "body": "puts"}
+{"type": "TK_SEP", "begin": 24, "end": 25, "body": " "}
+{"type": "TK_VAR", "begin": 26, "end": 27, "body": "x"}
+{"type": "TK_EOL", "begin": 27, "end": 30, "body": "\n  "}
+{"type": "TK_ESC", "begin": 30, "end": 38, "body": "continue"}
+{"type": "TK_EOL", "begin": 38, "end": 41, "body": "\n  "}
+{"type": "TK_ESC", "begin": 0, "end": 1, "body": "<"}
+{"type": "TK_SEP", "begin": 1, "end": 2, "body": " "}
+{"type": "TK_VAR", "begin": 3, "end": 4, "body": "x"}
+{"type": "TK_SEP", "begin": 4, "end": 5, "body": " "}
+{"type": "TK_ESC", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOL", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOF", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOL", "begin": 0, "end": 3, "body": "\n  "}
+{"type": "TK_ESC", "begin": 3, "end": 6, "body": "set"}
+{"type": "TK_SEP", "begin": 6, "end": 7, "body": " "}
+{"type": "TK_ESC", "begin": 7, "end": 8, "body": "x"}
+{"type": "TK_SEP", "begin": 8, "end": 9, "body": " "}
+{"type": "TK_CMD", "begin": 10, "end": 16, "body": "+ $x 1"}
+{"type": "TK_ESC", "begin": 0, "end": 1, "body": "+"}
+{"type": "TK_SEP", "begin": 1, "end": 2, "body": " "}
+{"type": "TK_VAR", "begin": 3, "end": 4, "body": "x"}
+{"type": "TK_SEP", "begin": 4, "end": 5, "body": " "}
+{"type": "TK_ESC", "begin": 5, "end": 6, "body": "1"}
+{"type": "TK_EOL", "begin": 5, "end": 6, "body": "1"}
+{"type": "TK_EOF", "begin": 5, "end": 6, "body": "1"}
+{"type": "TK_EOL", "begin": 17, "end": 20, "body": "\n  "}
+{"type": "TK_ESC", "begin": 20, "end": 24, "body": "puts"}
+{"type": "TK_SEP", "begin": 24, "end": 25, "body": " "}
+{"type": "TK_VAR", "begin": 26, "end": 27, "body": "x"}
+{"type": "TK_EOL", "begin": 27, "end": 30, "body": "\n  "}
+{"type": "TK_ESC", "begin": 30, "end": 38, "body": "continue"}
+{"type": "TK_EOL", "begin": 38, "end": 41, "body": "\n  "}
+{"type": "TK_ESC", "begin": 0, "end": 1, "body": "<"}
+{"type": "TK_SEP", "begin": 1, "end": 2, "body": " "}
+{"type": "TK_VAR", "begin": 3, "end": 4, "body": "x"}
+{"type": "TK_SEP", "begin": 4, "end": 5, "body": " "}
+{"type": "TK_ESC", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOL", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOF", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOL", "begin": 0, "end": 3, "body": "\n  "}
+{"type": "TK_ESC", "begin": 3, "end": 6, "body": "set"}
+{"type": "TK_SEP", "begin": 6, "end": 7, "body": " "}
+{"type": "TK_ESC", "begin": 7, "end": 8, "body": "x"}
+{"type": "TK_SEP", "begin": 8, "end": 9, "body": " "}
+{"type": "TK_CMD", "begin": 10, "end": 16, "body": "+ $x 1"}
+{"type": "TK_ESC", "begin": 0, "end": 1, "body": "+"}
+{"type": "TK_SEP", "begin": 1, "end": 2, "body": " "}
+{"type": "TK_VAR", "begin": 3, "end": 4, "body": "x"}
+{"type": "TK_SEP", "begin": 4, "end": 5, "body": " "}
+{"type": "TK_ESC", "begin": 5, "end": 6, "body": "1"}
+{"type": "TK_EOL", "begin": 5, "end": 6, "body": "1"}
+{"type": "TK_EOF", "begin": 5, "end": 6, "body": "1"}
+{"type": "TK_EOL", "begin": 17, "end": 20, "body": "\n  "}
+{"type": "TK_ESC", "begin": 20, "end": 24, "body": "puts"}
+{"type": "TK_SEP", "begin": 24, "end": 25, "body": " "}
+{"type": "TK_VAR", "begin": 26, "end": 27, "body": "x"}
+{"type": "TK_EOL", "begin": 27, "end": 30, "body": "\n  "}
+{"type": "TK_ESC", "begin": 30, "end": 38, "body": "continue"}
+{"type": "TK_EOL", "begin": 38, "end": 41, "body": "\n  "}
+{"type": "TK_ESC", "begin": 0, "end": 1, "body": "<"}
+{"type": "TK_SEP", "begin": 1, "end": 2, "body": " "}
+{"type": "TK_VAR", "begin": 3, "end": 4, "body": "x"}
+{"type": "TK_SEP", "begin": 4, "end": 5, "body": " "}
+{"type": "TK_ESC", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOL", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOF", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOL", "begin": 0, "end": 3, "body": "\n  "}
+{"type": "TK_ESC", "begin": 3, "end": 6, "body": "set"}
+{"type": "TK_SEP", "begin": 6, "end": 7, "body": " "}
+{"type": "TK_ESC", "begin": 7, "end": 8, "body": "x"}
+{"type": "TK_SEP", "begin": 8, "end": 9, "body": " "}
+{"type": "TK_CMD", "begin": 10, "end": 16, "body": "+ $x 1"}
+{"type": "TK_ESC", "begin": 0, "end": 1, "body": "+"}
+{"type": "TK_SEP", "begin": 1, "end": 2, "body": " "}
+{"type": "TK_VAR", "begin": 3, "end": 4, "body": "x"}
+{"type": "TK_SEP", "begin": 4, "end": 5, "body": " "}
+{"type": "TK_ESC", "begin": 5, "end": 6, "body": "1"}
+{"type": "TK_EOL", "begin": 5, "end": 6, "body": "1"}
+{"type": "TK_EOF", "begin": 5, "end": 6, "body": "1"}
+{"type": "TK_EOL", "begin": 17, "end": 20, "body": "\n  "}
+{"type": "TK_ESC", "begin": 20, "end": 24, "body": "puts"}
+{"type": "TK_SEP", "begin": 24, "end": 25, "body": " "}
+{"type": "TK_VAR", "begin": 26, "end": 27, "body": "x"}
+{"type": "TK_EOL", "begin": 27, "end": 30, "body": "\n  "}
+{"type": "TK_ESC", "begin": 30, "end": 38, "body": "continue"}
+{"type": "TK_EOL", "begin": 38, "end": 41, "body": "\n  "}
+{"type": "TK_ESC", "begin": 0, "end": 1, "body": "<"}
+{"type": "TK_SEP", "begin": 1, "end": 2, "body": " "}
+{"type": "TK_VAR", "begin": 3, "end": 4, "body": "x"}
+{"type": "TK_SEP", "begin": 4, "end": 5, "body": " "}
+{"type": "TK_ESC", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOL", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOF", "begin": 5, "end": 6, "body": "5"}
+{"type": "TK_EOF", "begin": 75, "end": 77, "body": "\n\n"}

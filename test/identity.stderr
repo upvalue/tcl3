@@ -1,0 +1,23 @@
+{"type": "TK_ESC", "begin": 0, "end": 4, "body": "proc"}
+{"type": "TK_SEP", "begin": 4, "end": 5, "body": " "}
+{"type": "TK_ESC", "begin": 5, "end": 10, "body": "ident"}
+{"type": "TK_SEP", "begin": 10, "end": 11, "body": " "}
+{"type": "TK_STR", "begin": 12, "end": 13, "body": "x"}
+{"type": "TK_SEP", "begin": 14, "end": 15, "body": " "}
+{"type": "TK_STR", "begin": 16, "end": 30, "body": " \n  return $x\n"}
+{"type": "TK_EOL", "begin": 31, "end": 33, "body": "\n\n"}
+{"type": "TK_ESC", "begin": 33, "end": 37, "body": "puts"}
+{"type": "TK_SEP", "begin": 37, "end": 38, "body": " "}
+{"type": "TK_CMD", "begin": 39, "end": 47, "body": "ident 42"}
+{"type": "TK_ESC", "begin": 0, "end": 5, "body": "ident"}
+{"type": "TK_SEP", "begin": 5, "end": 6, "body": " "}
+{"type": "TK_ESC", "begin": 6, "end": 8, "body": "42"}
+{"type": "TK_EOL", "begin": 6, "end": 8, "body": "42"}
+{"type": "TK_SEP", "begin": 0, "end": 4, "body": " \n  "}
+{"type": "TK_ESC", "begin": 4, "end": 10, "body": "return"}
+{"type": "TK_SEP", "begin": 10, "end": 11, "body": " "}
+{"type": "TK_VAR", "begin": 12, "end": 13, "body": "x"}
+{"type": "TK_EOL", "begin": 13, "end": 14, "body": "\n"}
+{"type": "TK_EOF", "begin": 6, "end": 8, "body": "42"}
+{"type": "TK_EOL", "begin": 48, "end": 49, "body": "\n"}
+{"type": "TK_EOF", "begin": 48, "end": 49, "body": "\n"}

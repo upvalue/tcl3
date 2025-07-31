@@ -14,5 +14,8 @@ picol-parser: picol.c
 picol-original: picol-original.c
 	${CC} $(CFLAGS) -o $@ $<
 
+picol-malloc-track: picol-original.c
+	${CC} ${CFLAGS} $(shell pkg-config --libs jemalloc) -g -o $@ $< 
+
 leaks:
 	leaks --atExit -- ./picol empty.tcl

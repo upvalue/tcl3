@@ -1,10 +1,9 @@
-
-#include "cacl.hpp"
+#include "tcl.hpp"
 #include <fstream>
 #include <iostream>
 #include <sstream>
 
-using namespace cacl;
+using namespace tcl;
 
 int main(int argc, char *argv[]) {
   if (argc != 2) {
@@ -15,11 +14,11 @@ int main(int argc, char *argv[]) {
   Interp i;
   i.register_core_commands();
 
-  i.register_command(
-      "testret", [](Interp &i, std::vector<std::string> &argv, void *privdata) {
-        std::cout << "it got called!" << std::endl;
-        return S_OK;
-      });
+  i.register_command("testret", [](Interp &i, std::vector<std::string> &argv,
+                                   Privdata *privdata) {
+    std::cout << "it got called!" << std::endl;
+    return S_OK;
+  });
 
   // Open and read the file
   std::ifstream file(argv[1]);
@@ -45,7 +44,7 @@ int main(int argc, char *argv[]) {
 
   // Print result if any
   if (!i.result.empty()) {
-    std::cout << i.result << std::endl;
+    // std::cout << i.result << std::endl;
   }
 
   return 0;

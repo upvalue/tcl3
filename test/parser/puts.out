@@ -1,5 +1,0 @@
-{"type": "TK_ESC", "begin": 0, "end": 3, "body": "puts"}
-{"type": "TK_SEP", "begin": 4, "end": 4, "body": " "}
-{"type": "TK_ESC", "begin": 5, "end": 5, "body": "5"}
-{"type": "TK_EOL", "begin": 6, "end": 6, "body": "\n"}
-{"type": "TK_EOF", "begin": 6, "end": 6, "body": "\n"}
