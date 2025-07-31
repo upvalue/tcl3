@@ -1,1 +1,1 @@
-if {== 1 1} { puts hi } else { puts bad }
+puts [+ 5 5]

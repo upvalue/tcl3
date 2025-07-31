@@ -7,8 +7,9 @@
 #include <sstream>
 #include <string>
 
-// TODO: Variables
-// TODO: More error handling
+// TODO: replace atoi with system word sized parser
+// TODO: try to reduce allocs with stirng_view
+// TOOD: try to simplify parser internally
 
 namespace cacl {
 
@@ -170,6 +171,14 @@ struct Parser {
     return S_OK;
   }
 
+  Status parse_comment() {
+    std::cout << "comment" << std::endl;
+    while (!done() && current() != '\n') {
+      i += 1;
+    }
+    return S_OK;
+  }
+
   /**
    * Variable, parses $alpha1234_5 type strings
    */
@@ -231,6 +240,7 @@ struct Parser {
    * Handles starting brace beginning
    */
   Status parse_string() {
+  start:
     token = TK_STR;
     bool new_word = token == TK_SEP || token == TK_EOL || token == TK_STR;
 
@@ -280,6 +290,42 @@ struct Parser {
     return S_OK;
   }
 
+  Status parse_command() {
+    int level = 1, blevel = 0;
+    i += 1;
+    start = i;
+    bool skip_last = false;
+    while (!done()) {
+      if (current() == '[' && blevel == 0) {
+        level += 1;
+      } else if (current() == ']') {
+        level -= 1;
+        if (level == 0) {
+          skip_last = true;
+          break;
+        }
+      } else if (current() == '\\') {
+        i++;
+      } else if (current() == '{') {
+        blevel++;
+      } else if (current() == '}') {
+        if (blevel != 0) {
+          blevel--;
+        }
+      }
+      i++;
+    }
+
+    end = i;
+    token = TK_CMD;
+
+    if (skip_last) {
+      i++;
+    }
+
+    return S_OK;
+  }
+
   string token_body() { return buffer.substr(start, end - start); }
 
   Status _next_token() {
@@ -293,6 +339,14 @@ struct Parser {
           return parse_string();
         }
         return parse_sep();
+      case '#':
+        if (token == TK_EOL) {
+          parse_comment();
+          continue;
+        }
+        break;
+      case '[':
+        return parse_command();
       case '\n':
       case ';':
         return parse_eol();
@@ -328,7 +382,6 @@ struct Parser {
 
 struct Interp;
 
-// TODO: can privdata be replaced with lambda capture?
 typedef Status(cmd_func_t)(Interp &i, std::vector<string> &argv,
                            void *privdata);
 
@@ -371,7 +424,7 @@ struct Interp {
 
   ~Interp() {
     /*
-    TODO segfault and cleanup/
+    TODO segfault and cleanup
     for (CallFrame *cf = callframe; cf != nullptr; cf = cf->parent) {
       delete cf;
     }
@@ -488,28 +541,32 @@ struct Interp {
       a = atoi(argv[1].c_str());
       b = atoi(argv[2].c_str());
 
-      if (argv[0].size() == 2) {
-        if ((argv[0][0] == '=') && (argv[0][1] == '=')) {
-          c = a == b;
-        } else {
-          C_CMD_ERR(i, "[" << argv[0] << "]: unknown operator");
-          return S_ERR;
-        }
+      if (argv[0].compare("+") == 0) {
+        c = a + b;
+      } else if (argv[0].compare("-") == 0) {
+        c = a - b;
+      } else if (argv[0].compare("*") == 0) {
+        c = a * b;
+      } else if (argv[0].compare("/") == 0) {
+        c = a / b;
+      } else if (argv[0].compare(">") == 0) {
+        c = a > b;
+      } else if (argv[0].compare("<") == 0) {
+        c = a < b;
+      } else if (argv[0].compare("==") == 0) {
+        c = a == b;
+      } else if (argv[0].compare("!=") == 0) {
+        c = a != b;
+      } else if (argv[0].compare(">=") == 0) {
+        c = a >= b;
+      } else if (argv[0].compare("<=") == 0) {
+        c = a <= b;
       } else {
         C_CMD_ERR(i, "[" << argv[0] << "]: unknown operator");
         return S_ERR;
       }
 
       i.result = std::to_string(c);
-
-      // int a = std::strtoimax(argv[1].c_str(), nullptr, 10);
-      // int b = std::max(argv[2].c_str(), nullptr, 10);
-
-      /*if (argv[0][0] == '+') {
-        i.result = std::to_string(a + b);
-      } else if (argv[0][0] == '-') {
-        i.result = std::to_string(a - b);
-      }*/
 
       return S_OK;
     };
@@ -556,6 +613,7 @@ struct Interp {
     register_command("set", set);
     register_command("if", ifc);
     register_command("==", math);
+    register_command("+", math);
   }
 
   //
@@ -576,18 +634,28 @@ struct Interp {
       TokenType prevtype = p.token;
 
       ret = p.next_token();
+
       // Exit if there's a parser error
       if (ret != S_OK) {
         return ret;
       }
+
+      std::string t = p.token_body();
 
       // Exit if we're at EOF
       if (p.token == TK_EOF) {
         break;
       }
 
-      if (p.token == TK_CMD) {
-        std::cout << "got command!" << std::endl;
+      if (p.token == TK_VAR) {
+        C_ERR("variable handling not implemented");
+        return S_ERR;
+      } else if (p.token == TK_CMD) {
+        ret = eval(t);
+        if (ret != S_OK) {
+          return ret;
+        }
+        t = result;
       } else if (p.token == TK_ESC) {
         // No escape handling
       } else if (p.token == TK_SEP) {
