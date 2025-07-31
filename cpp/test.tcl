@@ -1,1 +1,2 @@
-puts [+ 5 5]
+set x 5
+puts $x

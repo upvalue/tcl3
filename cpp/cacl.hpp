@@ -319,7 +319,7 @@ struct Parser {
     end = i;
     token = TK_CMD;
 
-    if (skip_last) {
+    if (current() == ']') {
       i++;
     }
 
@@ -612,8 +612,18 @@ struct Interp {
     register_command("puts", puts);
     register_command("set", set);
     register_command("if", ifc);
-    register_command("==", math);
+
+    // Math
     register_command("+", math);
+    register_command("-", math);
+    register_command("*", math);
+    register_command("/", math);
+    register_command("==", math);
+    register_command("!=", math);
+    register_command(">", math);
+    register_command("<", math);
+    register_command(">=", math);
+    register_command("<=", math);
   }
 
   //
@@ -648,8 +658,12 @@ struct Interp {
       }
 
       if (p.token == TK_VAR) {
-        C_ERR("variable handling not implemented");
-        return S_ERR;
+        Var *v = get_var(t);
+        if (v == nullptr) {
+          C_ERR("variable not found: '" << t << "'");
+          return S_ERR;
+        }
+        t = *v->val;
       } else if (p.token == TK_CMD) {
         ret = eval(t);
         if (ret != S_OK) {
@@ -691,7 +705,7 @@ struct Interp {
       // If last token was a separator or EOL, push the final token body
       // to the argument vector and continue
       if (prevtype == TK_SEP || prevtype == TK_EOL) {
-        argv.push_back(p.token_body());
+        argv.push_back(t);
       } else {
         std::cout << "interpolation woah" << std::endl;
       }
