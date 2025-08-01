@@ -35,12 +35,15 @@ enum TokenType {
   TK_UNKNOWN = 7,
 };
 
+typedef TokenType Token;
+
 /*
  * Print a string but escape whitespace
  */
 struct escape_string {
   escape_string(const string &s_) : s(s_) {}
-  const string &s;
+  escape_string(const string_view &s_) : s(s_) {}
+  const string_view s;
 };
 
 inline std::ostream &operator<<(std::ostream &os, const escape_string &e) {
@@ -97,6 +100,190 @@ inline std::ostream &operator<<(std::ostream &os, TokenType t) {
   std::ostringstream _c_cmd_err_line_##__LINE__;                               \
   _c_cmd_err_line_##__LINE__ << x;                                             \
   i.result = _c_cmd_err_line_##__LINE__.str();
+
+struct Parser2 {
+  Parser2(const std::string_view &body_, bool trace_parser_ = false)
+      : body(body_), trace_parser(trace_parser_) {}
+  ~Parser2() {}
+
+  const std::string_view body;
+  size_t cursor = 0;
+  size_t begin = 0, end = 0;
+  bool trace_parser;
+
+  // If inside a potentially multiline thing
+  bool in_string = false;
+  bool in_brace = false;
+  bool in_quote = false;
+  bool in_command = false;
+
+  size_t brace_level = 0;
+  Token token = TK_EOL;
+  char terminating_char = 0;
+
+  bool done() { return cursor >= body.size(); }
+  char peek() { return body[cursor]; }
+  char getc() { return body[cursor++]; }
+  void back() { cursor--; }
+
+  std::string_view token_body() { return body.substr(begin, end - begin); }
+
+  /**
+   * Consumes all whitespace until EOF or non-whitespace character
+   */
+  void consume_whitespace() {
+    while (!done()) {
+      char c = peek();
+      if (c == ' ' || c == '\n' || c == '\r' || c == '\t') {
+        getc();
+      } else {
+        break;
+      }
+    }
+  }
+
+  void recurse(Parser2 &sub, char terminating_char) {
+    sub.terminating_char = terminating_char;
+    while (true) {
+      Token tk = sub.next_token();
+      if (tk == TK_EOF) {
+        break;
+      }
+    }
+    cursor = cursor + sub.cursor;
+  }
+
+  Token _next_token() {
+    size_t adj = 0;
+  begin:
+    if (done()) {
+      if (token != TK_EOL && token != TK_EOF) {
+        token = TK_EOL;
+      } else {
+        token = TK_EOF;
+      }
+      return token;
+    }
+    token = TK_ESC;
+    begin = cursor;
+    while (!done()) {
+      char c = getc();
+      if (terminating_char && c == terminating_char) {
+        return TK_EOF;
+      }
+      switch (c) {
+      case '{': {
+        if (in_quote || in_string)
+          continue;
+        if (!in_brace) {
+          // Ignore opening brace
+          begin++;
+          token = TK_STR;
+          in_brace = true;
+        }
+        // Ignore brace
+        brace_level++;
+        break;
+      }
+      case '}': {
+        if (in_quote || in_string)
+          continue;
+        if (brace_level > 0) {
+          brace_level--;
+          if (brace_level == 0) {
+            in_brace = false;
+            adj = 1; // skip }
+            goto finish;
+          }
+          break;
+        }
+      }
+      case '[': {
+        if (in_quote || in_string || in_brace)
+          continue;
+        begin++;
+        Parser2 sub(body.substr(cursor));
+        recurse(sub, ']');
+        adj = 1;
+        token = TK_CMD;
+        goto finish;
+      }
+      case '$': {
+        if (in_string || in_brace)
+          continue;
+        begin++;
+        token = TK_VAR;
+        // Variables are not actually a string but we treat them as such
+        // to give them the same lexical behavior
+        in_string = true;
+        break;
+      }
+      // Potentially a comment
+      case '#': {
+        if (in_string || in_quote)
+          continue;
+        // Consume until newline
+        while (!done()) {
+          if (getc() == '\n')
+            break;
+        }
+        goto begin;
+      }
+      case '"': {
+        if (in_quote) {
+          in_quote = false;
+          adj = 1;
+          goto finish;
+        }
+        in_quote = true;
+        begin++;
+        continue;
+      }
+      case ' ':
+      case '\n':
+      case '\r':
+      case '\t':
+        // If we're in a multiline token or quote, we don't want to break out of
+        // the loop, this becomes part of the token because it may be
+        // significant whitespace
+        if (in_brace || in_quote) {
+          continue;
+        }
+        // If we're in a string, this terminates the string
+        // We back up one in order to then tokenize the whole separator
+        // (as it might be a significant portion of some other thing)
+        if (in_string) {
+          back();
+          in_string = false;
+          goto finish;
+        }
+        token = c == '\n' ? TK_EOL : TK_SEP;
+        // Eagerly consume all further whitespace
+        consume_whitespace();
+        goto finish;
+      default: {
+        if (!in_quote && !in_brace) {
+          in_string = true;
+        }
+      }
+      }
+    }
+  finish:
+    end = cursor - adj;
+    return token;
+  }
+
+  Token next_token() {
+    Token t = _next_token();
+    if (trace_parser) {
+      std::cerr << "{" << "\"type\": \"" << token << "\","
+                << " \"begin\": " << begin << "," << " \"end\": " << end << ","
+                << " \"body\": \"" << escape_string(token_body()) << "\""
+                << "}" << std::endl;
+    }
+    return t;
+  }
+};
 
 struct Parser {
   Parser(const string_view &buffer_, bool trace_parser_)
@@ -753,7 +940,8 @@ struct Interp {
 
   Status eval(const string_view &str) {
     result = "";
-    Parser p(str, trace_parser);
+    // Parser p(str, trace_parser);
+    Parser2 p(str, trace_parser);
     Status ret = S_OK;
 
     // Tracks command and argument
@@ -766,7 +954,7 @@ struct Interp {
       // load bearing
       TokenType prevtype = p.token;
 
-      ret = p.next_token();
+      p.next_token();
 
       // Exit if there's a parser error
       if (ret != S_OK) {
