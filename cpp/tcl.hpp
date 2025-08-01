@@ -231,8 +231,6 @@ struct Parser {
    * Handles starting brace beginning
    */
   Status parse_string() {
-  start:
-    token = TK_STR;
     bool new_word = token == TK_SEP || token == TK_EOL || token == TK_STR;
 
     if (new_word && current() == '{') {
@@ -409,7 +407,10 @@ typedef Status(cmd_func_t)(Interp &i, std::vector<string> &argv,
 struct Cmd {
   Cmd(const string &name_, cmd_func_t *func_, Privdata *privdata_, Cmd *next_)
       : name(name_), func(func_), privdata(privdata_), next(next_) {}
-  ~Cmd() {}
+  ~Cmd() {
+    if (privdata)
+      delete privdata;
+  }
 
   string name;
   cmd_func_t *func;
@@ -464,7 +465,6 @@ struct Interp {
     }
 
     for (Cmd *c = commands; c != nullptr; c = c->next) {
-      delete c->privdata;
       delete c;
     }
   }
