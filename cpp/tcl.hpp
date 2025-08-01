@@ -135,7 +135,7 @@ struct Parser {
   void consume_whitespace() {
     while (!done()) {
       char c = peek();
-      if (c == ' ' || c == '\n' || c == '\r' || c == '\t') {
+      if (c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == ';') {
         getc();
       } else {
         break;
@@ -256,6 +256,7 @@ struct Parser {
       case '\n':
       case '\r':
       case '\t':
+      case ';':
         // If we're in a multiline token or quote, we don't want to break out of
         // the loop, this becomes part of the token because it may be
         // significant whitespace
@@ -275,7 +276,7 @@ struct Parser {
         if (in_quote) {
           continue;
         }
-        token = c == '\n' ? TK_EOL : TK_SEP;
+        token = (c == '\n' || c == ';') ? TK_EOL : TK_SEP;
         // Eagerly consume all further whitespace
         consume_whitespace();
         goto finish;
