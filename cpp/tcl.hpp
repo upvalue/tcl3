@@ -4,6 +4,7 @@
 
 // Some differences: uses STL string and string_view -- less allocs
 // Parser interface also uses string_view, doesn't expose as many variables
+// Procedure private data uses virtual destructors for cleanup
 
 #ifndef _TCL_HPP
 #define _TCL_HPP
@@ -839,13 +840,15 @@ inline Status call_proc(Interp &i, std::vector<string> &argv, Privdata *pd_) {
 
   // Parse arguments list while checking arity
   size_t j = 0, start = 0;
-  while (true) {
+  for (; j < alist->size(); j++) {
+    while (j < alist->size() && alist->at(j) == ' ') {
+      j++;
+    }
+
     start = j;
-    for (; j < alist->size(); j++) {
-      char c = alist->at(j);
-      if (c == ' ') {
-        break;
-      }
+
+    while (j < alist->size() && alist->at(j) != ' ') {
+      j++;
     }
 
     // Got argument
@@ -872,7 +875,7 @@ inline Status call_proc(Interp &i, std::vector<string> &argv, Privdata *pd_) {
 
   i.drop_call_frame();
 
-  return S_OK;
+  return s;
 }
 
 } // namespace tcl

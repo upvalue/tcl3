@@ -344,10 +344,13 @@ int picolGetToken(struct picolParser *p) {
     fprintf(stderr, "{\"type\": \"");
     printtoken(p->type);
     char *body = calloc(1, (p->end - p->start) + 2);
-    strncpy(body, p->start, (p->end - p->start) + 1);
+    if (p->end != 0) {
+      strncpy(body, p->start, (p->end - p->start) + 1);
+    }
     body[(p->end - p->start) + 1] = '\0';
     fprintf(stderr, "\", \"begin\": %ld, \"end\": %ld, \"body\": \"",
-            p->start - p->text, p->end - p->text + 1);
+            p->start == 0 ? 0 : p->start - p->text,
+            p->end == 0 ? 0 : p->end - p->text + 1);
     print_escaped_string(body);
     fprintf(stderr, "\"}\n");
     free(body);
