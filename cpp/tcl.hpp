@@ -245,32 +245,39 @@ struct Parser {
       i++;
     }
 
-    Save save(this);
+    start = end = i;
     while (true) {
       if (done()) {
         token = TK_ESC;
+        end = i;
         return S_OK;
       }
       switch (current()) {
+      case '$':
+      case '[': {
+        end = i;
+        token = TK_ESC;
+        return S_OK;
+      }
       case ' ':
       case '\t':
       case '\n':
       case '\r':
       case ';': {
         if (!insidequote) {
+          end = i;
           token = TK_ESC;
           return S_OK;
         }
         break;
       }
-      case '$':
-        return parse_var();
       case '"': {
         // If we're inside quote already this means it's time to escape
         if (insidequote) {
+          end = i;
           token = TK_ESC;
           insidequote = false;
-          i += 1;
+          i++;
           return S_OK;
         }
       }
@@ -337,9 +344,11 @@ struct Parser {
           parse_comment();
           continue;
         }
-        break;
+        return parse_string();
       case '[':
         return parse_command();
+      case '$':
+        return parse_var();
       case '\n':
       case ';':
         return parse_eol();
@@ -750,7 +759,9 @@ struct Interp {
     // Tracks command and argument
     std::vector<string> argv;
 
+    size_t iter = 0;
     while (1) {
+      iter++;
       // Previous token type -- note that the parser default value (TK_EOL) is
       // load bearing
       TokenType prevtype = p.token;
