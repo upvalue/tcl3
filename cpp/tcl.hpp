@@ -2,9 +2,11 @@
 
 // C++ reimplementation/butchery of picol
 
-// Some differences: uses STL string and string_view -- less allocs
-// Parser interface also uses string_view, doesn't expose as many variables
-// Procedure private data uses virtual destructors for cleanup
+// - Some differences: uses STL string and string_view -- less manual allocs and
+//   less allocs overall.
+// - Parser has been rewritten to have one main lexing loop
+// - Parser interface also uses string_view, doesn't expose as many variables
+// - Procedure private data uses virtual destructors for cleanup
 
 #ifndef _TCL_HPP
 #define _TCL_HPP
@@ -154,7 +156,7 @@ struct Parser2 {
   }
 
   Token _next_token() {
-    size_t adj = 0;
+    int adj = 0;
   begin:
     if (done()) {
       if (token != TK_EOL && token != TK_EOF) {
@@ -167,6 +169,7 @@ struct Parser2 {
     token = TK_ESC;
     begin = cursor;
     while (!done()) {
+      adj = 0;
       char c = getc();
       if (terminating_char && c == terminating_char) {
         return TK_EOF;
@@ -211,8 +214,18 @@ struct Parser2 {
       case '$': {
         if (in_string || in_brace)
           continue;
+
+        // We're in a quote and this variable is "terminating" another part of
+        // the quote. Finish that off first before continuing to parse the
+        // variable
+        if (in_quote && cursor != begin + 1) {
+          back();
+          goto finish;
+        }
+
         begin++;
         token = TK_VAR;
+
         // Variables are not actually a string but we treat them as such
         // to give them the same lexical behavior
         in_string = true;
@@ -232,12 +245,13 @@ struct Parser2 {
       case '"': {
         if (in_quote) {
           in_quote = false;
+          // Skip closing "
           adj = 1;
           goto finish;
         }
         in_quote = true;
         begin++;
-        continue;
+        adj = 1;
       }
       case ' ':
       case '\n':
@@ -246,7 +260,7 @@ struct Parser2 {
         // If we're in a multiline token or quote, we don't want to break out of
         // the loop, this becomes part of the token because it may be
         // significant whitespace
-        if (in_brace || in_quote) {
+        if (in_brace) {
           continue;
         }
         // If we're in a string, this terminates the string
@@ -256,6 +270,11 @@ struct Parser2 {
           back();
           in_string = false;
           goto finish;
+        }
+        // This must come after the string check because we could be parsing
+        // a variable within a string
+        if (in_quote) {
+          continue;
         }
         token = c == '\n' ? TK_EOL : TK_SEP;
         // Eagerly consume all further whitespace
