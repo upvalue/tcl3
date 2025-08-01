@@ -33,16 +33,6 @@ static int parser_stderr = 0;
 enum { PICOL_OK, PICOL_ERR, PICOL_RETURN, PICOL_BREAK, PICOL_CONTINUE };
 enum { PT_ESC, PT_STR, PT_CMD, PT_VAR, PT_SEP, PT_EOL, PT_EOF };
 
-struct picolParser {
-  char *text;
-  char *p;         /* current text position */
-  int len;         /* remaining length */
-  char *start;     /* token start */
-  char *end;       /* token end */
-  int type;        /* token type, PT_... */
-  int insidequote; /* True if inside " " */
-};
-
 struct picolVar {
   char *name, *val;
   struct picolVar *next;
@@ -69,6 +59,16 @@ struct picolInterp {
   struct picolCallFrame *callframe;
   struct picolCmd *commands;
   char *result;
+};
+
+struct picolParser {
+  char *text;
+  char *p;         /* current text position */
+  int len;         /* remaining length */
+  char *start;     /* token start */
+  char *end;       /* token end */
+  int type;        /* token type, PT_... */
+  int insidequote; /* True if inside " " */
 };
 
 void picolInitParser(struct picolParser *p, char *text) {

@@ -103,17 +103,16 @@ inline std::ostream &operator<<(std::ostream &os, TokenType t) {
   _c_cmd_err_line_##__LINE__ << x;                                             \
   i.result = _c_cmd_err_line_##__LINE__.str();
 
-struct Parser2 {
-  Parser2(const std::string_view &body_, bool trace_parser_ = false)
+struct Parser {
+  Parser(const std::string_view &body_, bool trace_parser_ = false)
       : body(body_), trace_parser(trace_parser_) {}
-  ~Parser2() {}
+  ~Parser() {}
 
   const std::string_view body;
   size_t cursor = 0;
   size_t begin = 0, end = 0;
   bool trace_parser;
 
-  // If inside a potentially multiline thing
   bool in_string = false;
   bool in_brace = false;
   bool in_quote = false;
@@ -144,7 +143,7 @@ struct Parser2 {
     }
   }
 
-  void recurse(Parser2 &sub, char terminating_char) {
+  void recurse(Parser &sub, char terminating_char) {
     sub.terminating_char = terminating_char;
     while (true) {
       Token tk = sub.next_token();
@@ -157,7 +156,7 @@ struct Parser2 {
 
   Token _next_token() {
     int adj = 0;
-  begin:
+  start:
     if (done()) {
       if (token != TK_EOL && token != TK_EOF) {
         token = TK_EOL;
@@ -205,7 +204,7 @@ struct Parser2 {
         if (in_quote || in_string || in_brace)
           continue;
         begin++;
-        Parser2 sub(body.substr(cursor));
+        Parser sub(body.substr(cursor));
         recurse(sub, ']');
         adj = 1;
         token = TK_CMD;
@@ -233,14 +232,14 @@ struct Parser2 {
       }
       // Potentially a comment
       case '#': {
-        if (in_string || in_quote)
+        if (in_string || in_quote || in_brace)
           continue;
         // Consume until newline
         while (!done()) {
           if (getc() == '\n')
             break;
         }
-        goto begin;
+        goto start;
       }
       case '"': {
         if (in_quote) {
@@ -301,291 +300,6 @@ struct Parser2 {
                 << "}" << std::endl;
     }
     return t;
-  }
-};
-
-struct Parser {
-  Parser(const string_view &buffer_, bool trace_parser_)
-      : buffer(buffer_), result(""), i(0), start(0), end(0), token(TK_EOL),
-        insidequote(false), trace_parser(trace_parser_) {}
-
-  string_view buffer;
-  string result;
-  bool trace_parser;
-
-  // String iterator
-  size_t i;
-
-  // Start and end of the specific thing being parsed in the string
-  size_t start, end;
-
-  // Type of token parser
-  TokenType token;
-
-  // Whether inside a quote or not
-  bool insidequote;
-
-  bool done() const { return i >= buffer.length(); }
-  char current() const { return buffer.at(i); }
-  TokenType token_type() const { return token; }
-
-  /**
-   * Saves token place at the start of token
-   * and the end of the function that's generating it
-   */
-  struct Save {
-    Save(Parser *p_) : p(p_) { p->start = p->i; }
-    ~Save() { p->end = p->i; }
-
-    Parser *p;
-  };
-
-  /**
-   * Separator -- triggered on any non-newline whitespace or a
-   * semicolon and consumes all whitespace until next char or EOF
-   */
-  Status parse_sep() {
-    token = TK_SEP;
-    Save save(this);
-    while (!done() && (current() == ' ' || current() == '\t' ||
-                       current() == '\n' || current() == '\r')) {
-      i += 1;
-    }
-    return S_OK;
-  }
-
-  /**
-   * End of line handlers
-   */
-  Status parse_eol() {
-    token = TK_EOL;
-    Save save(this);
-    // Discard any whitespace or separators present at end of line
-    while (!done() &&
-           (current() == ' ' || current() == '\t' || current() == '\n' ||
-            current() == '\r' || current() == ';')) {
-      i += 1;
-    }
-    return S_OK;
-  }
-
-  Status parse_comment() {
-    while (!done() && current() != '\n') {
-      i += 1;
-    }
-    return S_OK;
-  }
-
-  /**
-   * Variable, parses $alpha1234_5 type strings
-   */
-  Status parse_var() {
-    // Skip $
-    i++;
-    Save save(this);
-    while (!done()) {
-      if (isalnum(current()) || current() == '_') {
-        i++;
-      } else {
-        break;
-      }
-    }
-
-    // Treat standalone $ as a string with only $ as its contents
-    if (start == i) {
-      token = TK_STR;
-    } else {
-      token = TK_VAR;
-    }
-
-    return S_OK;
-  }
-
-  /**
-   * Brace -- finds the matching brace
-   * while handling levels
-   */
-  Status parse_brace() {
-    size_t level = 1;
-    i += 1; // skip {
-    start = i;
-    while (!done()) {
-      if (current() == '\\') {
-        i += 1;
-      } else if (current() == '{') {
-        level += 1;
-      } else if (current() == '}') {
-        i += 1;
-        level -= 1;
-        if (level == 0) {
-          token = TK_STR;
-          end = i - 1;
-          return S_OK;
-        }
-      }
-      i += 1;
-    }
-    // Not reached -- but in part because we don't
-    // complain about brace mismatches
-    return S_OK;
-  }
-
-  /**
-   * String parser; bulk of the actual parser
-   * Begins by detecting whether this is a new word
-   * (previous token was a separator or another string)
-   * Handles starting brace beginning
-   */
-  Status parse_string() {
-    bool new_word = token == TK_SEP || token == TK_EOL || token == TK_STR;
-
-    if (new_word && current() == '{') {
-      return parse_brace();
-    }
-
-    // Check whether we need to set inside quote and consume "
-    if (new_word && current() == '"') {
-      insidequote = true;
-      i++;
-    }
-
-    start = end = i;
-    while (true) {
-      if (done()) {
-        token = TK_ESC;
-        end = i;
-        return S_OK;
-      }
-      switch (current()) {
-      case '$':
-      case '[': {
-        end = i;
-        token = TK_ESC;
-        return S_OK;
-      }
-      case ' ':
-      case '\t':
-      case '\n':
-      case '\r':
-      case ';': {
-        if (!insidequote) {
-          end = i;
-          token = TK_ESC;
-          return S_OK;
-        }
-        break;
-      }
-      case '"': {
-        // If we're inside quote already this means it's time to escape
-        if (insidequote) {
-          end = i;
-          token = TK_ESC;
-          insidequote = false;
-          i++;
-          return S_OK;
-        }
-      }
-      }
-
-      i += 1;
-    }
-    return S_OK;
-  }
-
-  Status parse_command() {
-    int level = 1, blevel = 0;
-    i += 1;
-    start = i;
-    bool skip_last = false;
-    while (!done()) {
-      if (current() == '[' && blevel == 0) {
-        level += 1;
-      } else if (current() == ']') {
-        level -= 1;
-        if (level == 0) {
-          skip_last = true;
-          break;
-        }
-      } else if (current() == '\\') {
-        i++;
-      } else if (current() == '{') {
-        blevel++;
-      } else if (current() == '}') {
-        if (blevel != 0) {
-          blevel--;
-        }
-      }
-      i++;
-    }
-
-    end = i;
-    token = TK_CMD;
-
-    if (current() == ']') {
-      i++;
-    }
-
-    return S_OK;
-  }
-
-  string_view token_body() const {
-    return string_view(buffer).substr(start, end - start);
-  }
-
-  Status _next_token() {
-    while (!done()) {
-      char c = current();
-      switch (c) {
-      case ' ':
-      case '\t':
-      case '\r':
-        if (insidequote) {
-          return parse_string();
-        }
-        return parse_sep();
-      case '#':
-        if (token == TK_EOL) {
-          parse_comment();
-          continue;
-        }
-        return parse_string();
-      case '[':
-        return parse_command();
-      case '$':
-        return parse_var();
-      case '\n':
-      case ';':
-        return parse_eol();
-      case '"':
-        return parse_string();
-      default:
-        return parse_string();
-      }
-    }
-
-    // If we've reached the end of the buffer,
-    // if there's a non-EOL non-EOF token present, we emit an EOL
-    // to cause the interpreter to actually evaluate the string
-
-    // If EOL, we've been called again and emit an EOF to cease execution
-    if (token != TK_EOL && token != TK_EOF) {
-      token = TK_EOL;
-    } else {
-      token = TK_EOF;
-    }
-
-    return S_OK;
-  }
-
-  Status next_token() {
-    Status ret = _next_token();
-    if (trace_parser) {
-      std::cerr << "{\"type\": \"" << token << "\", \"begin\": " << start
-                << ", \"end\": " << end << ", \"body\": \""
-                << escape_string(std::string(token_body())) << "\"}"
-                << std::endl;
-    }
-    return ret;
   }
 };
 
@@ -960,7 +674,7 @@ struct Interp {
   Status eval(const string_view &str) {
     result = "";
     // Parser p(str, trace_parser);
-    Parser2 p(str, trace_parser);
+    Parser p(str, trace_parser);
     Status ret = S_OK;
 
     // Tracks command and argument

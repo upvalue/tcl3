@@ -1,0 +1,13 @@
+puts [== 0 0]
+puts [>= 5 4]
+puts [<= 4 5]
+puts [>= 5 5]
+puts [<= 5 5]
+puts [< 4 5]
+puts [> 5 4]
+puts [!= 1 2]
+
+puts [+ 2 2]
+puts [- 6 2]
+puts [/ 16 4]
+puts [* 2 2]
