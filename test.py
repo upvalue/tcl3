@@ -17,7 +17,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Test suite for picol and its ports')
     parser.add_argument('--update', action='store_true', 
                        help='Update test output files instead of checking them')
-    parser.add_argument('--impl', type=str, default='./picol/picol-parser',
+    parser.add_argument('--impl', type=str, default='./picol/picol',
                        help='Path to the implementation to test')
     parser.add_argument('--suite', type=str, choices=['parser', 'eval', 'all'], default='all',
                        help='Which test suite to run (default: all)')

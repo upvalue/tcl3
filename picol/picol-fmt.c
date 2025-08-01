@@ -28,8 +28,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int parser_stderr = 0;
-
 enum { PICOL_OK, PICOL_ERR, PICOL_RETURN, PICOL_BREAK, PICOL_CONTINUE };
 enum { PT_ESC, PT_STR, PT_CMD, PT_VAR, PT_SEP, PT_EOL, PT_EOF };
 
@@ -250,7 +248,7 @@ int picolParseComment(struct picolParser *p) {
   return PICOL_OK;
 }
 
-int _picolGetToken(struct picolParser *p) {
+int picolGetToken(struct picolParser *p) {
   while (1) {
     if (!p->len) {
       if (p->type != PT_EOL && p->type != PT_EOF)
@@ -288,73 +286,6 @@ int _picolGetToken(struct picolParser *p) {
   return PICOL_OK; /* unreached */
 }
 
-void printtoken(int t) {
-  switch (t) {
-  case PT_ESC:
-    fprintf(stderr, "TK_ESC");
-    break;
-  case PT_STR:
-    fprintf(stderr, "TK_STR");
-    break;
-  case PT_CMD:
-    fprintf(stderr, "TK_CMD");
-    break;
-  case PT_VAR:
-    fprintf(stderr, "TK_VAR");
-    break;
-  case PT_SEP:
-    fprintf(stderr, "TK_SEP");
-    break;
-  case PT_EOL:
-    fprintf(stderr, "TK_EOL");
-    break;
-  case PT_EOF:
-    fprintf(stderr, "TK_EOF");
-    break;
-  default:
-    fprintf(stderr, "TK_UNKNOWN");
-  }
-}
-
-void print_escaped_string(char *s) {
-  for (size_t i = 0; i < strlen(s); i++) {
-    switch (s[i]) {
-    case '\n':
-      fputc('\\', stderr);
-      fputc('n', stderr);
-      break;
-    case '\r':
-      fputc('\\', stderr);
-      fputc('r', stderr);
-      break;
-    case '\t':
-      fputc('\\', stderr);
-      fputc('t', stderr);
-      break;
-    default:
-      fputc(s[i], stderr);
-      break;
-    }
-  }
-}
-
-int picolGetToken(struct picolParser *p) {
-  int ret = _picolGetToken(p);
-  if (parser_stderr) {
-    fprintf(stderr, "{\"type\": \"");
-    printtoken(p->type);
-    char *body = calloc(1, (p->end - p->start) + 2);
-    strncpy(body, p->start, (p->end - p->start) + 1);
-    body[(p->end - p->start) + 1] = '\0';
-    fprintf(stderr, "\", \"begin\": %ld, \"end\": %ld, \"body\": \"",
-            p->start - p->text, p->end - p->text + 1);
-    print_escaped_string(body);
-    fprintf(stderr, "\"}\n");
-    free(body);
-  }
-  return ret;
-}
-
 void picolInitInterp(struct picolInterp *i) {
   i->level = 0;
   i->callframe = malloc(sizeof(struct picolCallFrame));
@@ -362,19 +293,6 @@ void picolInitInterp(struct picolInterp *i) {
   i->callframe->parent = NULL;
   i->commands = NULL;
   i->result = strdup("");
-}
-
-void picolCloseInterp(struct picolInterp *i) {
-  free(i->callframe);
-  if (i->result)
-    free(i->result);
-  struct picolCmd *c = i->commands, *next;
-  while (c) {
-    next = c->next;
-    free(c->name);
-    free(c);
-    c = next;
-  }
 }
 
 void picolSetResult(struct picolInterp *i, char *s) {
@@ -721,11 +639,6 @@ void picolRegisterCoreCommands(struct picolInterp *i) {
 }
 
 int main(int argc, char **argv) {
-
-  if (getenv("PARSER_STDERR")) {
-    parser_stderr = 1;
-  }
-
   struct picolInterp interp;
   picolInitInterp(&interp);
   picolRegisterCoreCommands(&interp);
@@ -753,7 +666,5 @@ int main(int argc, char **argv) {
     if (picolEval(&interp, buf) != PICOL_OK)
       printf("%s\n", interp.result);
   }
-
-  picolCloseInterp(&interp);
   return 0;
 }

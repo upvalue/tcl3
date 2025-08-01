@@ -1,3 +1,10 @@
+// tcl.hpp
+
+// C++ reimplementation/butchery of picol
+
+// Some differences: uses STL string and string_view -- less allocs
+// Parser interface also uses string_view, doesn't expose as many variables
+
 #ifndef _TCL_HPP
 #define _TCL_HPP
 
@@ -8,12 +15,11 @@
 #include <string>
 #include <string_view>
 
-// TODO: replace atoi with system word sized parser
-// TODO: try to reduce allocs with string_view
-// TOOD: try to simplify parser internally and externally
-// TODO: proc, fib demo
-
 namespace tcl {
+
+// Typedef std::string to make it easier to experiment with drop in replacements
+typedef std::string string;
+typedef std::string_view string_view;
 
 enum Status { S_OK = 0, S_ERR = 1, S_RETURN = 2, S_BREAK = 3, S_CONTINUE = 4 };
 
@@ -32,8 +38,8 @@ enum TokenType {
  * Print a string but escape whitespace
  */
 struct escape_string {
-  escape_string(const std::string &s_) : s(s_) {}
-  const std::string &s;
+  escape_string(const string &s_) : s(s_) {}
+  const string &s;
 };
 
 inline std::ostream &operator<<(std::ostream &os, const escape_string &e) {
@@ -81,11 +87,6 @@ inline std::ostream &operator<<(std::ostream &os, TokenType t) {
   return os;
 }
 
-#define C_TRACE_PARSER(x)                                                      \
-  if (trace_parser) {                                                          \
-    std::cout << "at: " << i << ' ' << x << std::endl;                         \
-  }
-
 #define C_ERR(x)                                                               \
   std::ostringstream _c_err_line_##__LINE__;                                   \
   _c_err_line_##__LINE__ << x;                                                 \
@@ -95,10 +96,6 @@ inline std::ostream &operator<<(std::ostream &os, TokenType t) {
   std::ostringstream _c_cmd_err_line_##__LINE__;                               \
   _c_cmd_err_line_##__LINE__ << x;                                             \
   i.result = _c_cmd_err_line_##__LINE__.str();
-
-// Typedef std::string to make it easier to experiment with drop in replacements
-typedef std::string string;
-typedef std::string_view string_view;
 
 struct Parser {
   Parser(const string_view &buffer_, bool trace_parser_)
@@ -369,7 +366,7 @@ struct Parser {
   Status next_token() {
     Status ret = _next_token();
     if (trace_parser) {
-      std::cerr << "{\"type\": " << token << ", \"begin\": " << start
+      std::cerr << "{\"type\": \"" << token << "\", \"begin\": " << start
                 << ", \"end\": " << end << ", \"body\": \""
                 << escape_string(std::string(token_body())) << "\"}"
                 << std::endl;
@@ -411,8 +408,13 @@ struct Cmd {
 };
 
 struct Var {
-  std::string *name, *val;
+  string *name, *val;
   Var *next;
+
+  ~Var() {
+    delete name;
+    delete val;
+  }
 };
 
 struct CallFrame {
@@ -421,8 +423,6 @@ struct CallFrame {
     Var *v = vars;
     while (v != nullptr) {
       Var *next = v->next;
-      delete v->name;
-      delete v->val;
       delete v;
       v = next;
     }
@@ -677,12 +677,6 @@ struct Interp {
 
     register_command("return", ret);
 
-    // todo proc
-    // todo while
-    // todo break
-    // todo continue
-    // todo return
-
     ///// Math handling
     auto math = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
       if (!i.arity_check("math", argv, 3, 3)) {
@@ -824,9 +818,7 @@ struct Interp {
       if (prevtype == TK_SEP || prevtype == TK_EOL) {
         argv.push_back(std::string(t));
       } else {
-        string new_argv(argv[argv.size() - 1]);
-        new_argv += t;
-        argv[argv.size() - 1] = new_argv;
+        argv[argv.size() - 1] += t;
       }
       prevtype = p.token;
     }

@@ -1,5 +1,4 @@
-this is Antirez's Picol source mostly verbatim
+picol
 
-only modification is freeing the interpreter at the end to make sure there are
-no memory leaks (there aren't really)
-
+`picol-original.c` is the original code
+`picol.c` has some modifications around freeing memory and tracing the parser's output
