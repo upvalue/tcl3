@@ -76,7 +76,7 @@ def run_tests(suite):
             else:
                 success, error = check_output(stderr_file, stderr)
                 if not success:
-                    fail_tests[f] = f"stderr {error}"
+                    fail_tests[f] = f"parser {error}"
                     fail_count += 1
                     test_failed = True
                     need_update_tests.append(f)
@@ -92,7 +92,7 @@ def run_tests(suite):
             else:
                 success, error = check_output(stdout_file, stdout)
                 if not success:
-                    fail_tests[f] = f"stdout {error}"
+                    fail_tests[f] = f"eval {error}"
                     fail_count += 1
                     test_failed = True
                     need_update_tests.append(f)
@@ -108,7 +108,7 @@ def run_tests(suite):
                 if os.path.exists(stdout_file):
                     success, error = check_output(stdout_file, stdout)
                     if not success:
-                        fail_tests[f] = f"stdout {error}"
+                        fail_tests[f] = f"eval {error}"
                         fail_count += 1
                         test_failed = True
                         need_update_tests.append(f)
@@ -117,7 +117,7 @@ def run_tests(suite):
                 if os.path.exists(stderr_file):
                     success, error = check_output(stderr_file, stderr)
                     if not success:
-                        fail_tests[f] = f"stderr {error}"
+                        fail_tests[f] = f"parser {error}"
                         fail_count += 1
                         test_failed = True
                         if f not in need_update_tests:
