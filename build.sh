@@ -22,6 +22,14 @@ else
     picol_status="FAIL"
 fi
 
-cd ..
+cd ../zig
+if zig build; then
+    echo "[ZIG] SUCCESS"
+    zig_status="SUCCESS"
+else
+    echo "[ZIG] FAIL"
+    zig_status="FAIL"
+fi
 
+cd ..
 echo "Build summary: CPP=$cpp_status PICOL=$picol_status"
