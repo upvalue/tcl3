@@ -340,7 +340,6 @@ struct Cmd {
 
 struct Var {
   string *name, *val;
-  Var *next;
 
   ~Var() {
     delete name;
@@ -349,16 +348,12 @@ struct Var {
 };
 
 struct CallFrame {
-  CallFrame() : vars(nullptr) {}
   ~CallFrame() {
-    Var *v = vars;
-    while (v != nullptr) {
-      Var *next = v->next;
+    for (Var *v : vars) {
       delete v;
-      v = next;
     }
   }
-  Var *vars;
+  std::vector<Var *> vars;
 };
 
 inline Status call_proc(Interp &i, std::vector<string> &argv,
@@ -366,14 +361,11 @@ inline Status call_proc(Interp &i, std::vector<string> &argv,
 
 struct Interp {
   std::vector<Cmd *> commands;
-  string result;
   std::vector<CallFrame *> callframes;
-  size_t level;
+  string result;
   bool trace_parser;
 
-  Interp() : level(0), trace_parser(false) {
-    callframes.push_back(new CallFrame());
-  }
+  Interp() : trace_parser(false) { callframes.push_back(new CallFrame()); }
 
   ~Interp() {
     for (CallFrame *cf : callframes) {
@@ -396,6 +388,7 @@ struct Interp {
   }
 
   Cmd *get_command(const string &name) const {
+    // Is there a better way to look this up in the vector?
     for (Cmd *c : commands) {
       if (c->name.compare(name) == 0) {
         return c;
@@ -421,7 +414,7 @@ struct Interp {
    * Get a variable by name
    */
   Var *get_var(const std::string_view &name) {
-    for (Var *v = callframes.back()->vars; v != nullptr; v = v->next) {
+    for (Var *v : callframes.back()->vars) {
       if (v->name->compare(name) == 0) {
         return v;
       }
@@ -441,8 +434,7 @@ struct Interp {
       v = new Var();
       v->name = new string(name);
       v->val = new string(val);
-      v->next = callframes.back()->vars;
-      callframes.back()->vars = v;
+      callframes.back()->vars.push_back(v);
     }
     return S_OK;
   }

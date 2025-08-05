@@ -7,4 +7,4 @@ proc fib {x} {
     }
 }
 
-puts [fib 35]
+puts [fib 25]
