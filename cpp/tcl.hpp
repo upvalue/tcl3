@@ -349,7 +349,7 @@ struct Var {
 };
 
 struct CallFrame {
-  CallFrame() : parent(nullptr), vars(nullptr) {}
+  CallFrame() : vars(nullptr) {}
   ~CallFrame() {
     Var *v = vars;
     while (v != nullptr) {
@@ -358,7 +358,6 @@ struct CallFrame {
       v = next;
     }
   }
-  CallFrame *parent;
   Var *vars;
 };
 
@@ -368,18 +367,17 @@ inline Status call_proc(Interp &i, std::vector<string> &argv,
 struct Interp {
   std::vector<Cmd *> commands;
   string result;
-  CallFrame *callframe;
+  std::vector<CallFrame *> callframes;
   size_t level;
   bool trace_parser;
 
-  Interp() : level(0), callframe(new CallFrame()), trace_parser(false) {}
+  Interp() : level(0), trace_parser(false) {
+    callframes.push_back(new CallFrame());
+  }
 
   ~Interp() {
-    CallFrame *cf = callframe;
-    while (cf) {
-      CallFrame *next = cf->parent;
+    for (CallFrame *cf : callframes) {
       delete cf;
-      cf = next;
     }
 
     for (Cmd *c : commands) {
@@ -392,10 +390,9 @@ struct Interp {
   //
 
   void drop_call_frame() {
-    CallFrame *cf = callframe;
-    CallFrame *parent = cf->parent;
+    CallFrame *cf = callframes.back();
+    callframes.pop_back();
     delete cf;
-    callframe = parent;
   }
 
   Cmd *get_command(const string &name) const {
@@ -424,7 +421,7 @@ struct Interp {
    * Get a variable by name
    */
   Var *get_var(const std::string_view &name) {
-    for (Var *v = callframe->vars; v != nullptr; v = v->next) {
+    for (Var *v = callframes.back()->vars; v != nullptr; v = v->next) {
       if (v->name->compare(name) == 0) {
         return v;
       }
@@ -444,8 +441,8 @@ struct Interp {
       v = new Var();
       v->name = new string(name);
       v->val = new string(val);
-      v->next = callframe->vars;
-      callframe->vars = v;
+      v->next = callframes.back()->vars;
+      callframes.back()->vars = v;
     }
     return S_OK;
   }
@@ -755,8 +752,7 @@ inline Status call_proc(Interp &i, std::vector<string> &argv, Privdata *pd_) {
   ProcPrivdata *pd = static_cast<ProcPrivdata *>(pd_);
   // Set up a new call frame
   CallFrame *cf = new CallFrame();
-  cf->parent = i.callframe;
-  i.callframe = cf;
+  i.callframes.push_back(cf);
 
   size_t arity = 0;
   string *alist = pd->args;
