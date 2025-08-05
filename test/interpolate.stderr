@@ -12,7 +12,6 @@
 {"type": "TK_EOL", "begin": 15, "end": 16, "body": "\n"}
 {"type": "TK_ESC", "begin": 16, "end": 20, "body": "puts"}
 {"type": "TK_SEP", "begin": 20, "end": 21, "body": " "}
-{"type": "TK_ESC", "begin": 22, "end": 22, "body": ""}
 {"type": "TK_VAR", "begin": 23, "end": 24, "body": "x"}
 {"type": "TK_ESC", "begin": 24, "end": 27, "body": " + "}
 {"type": "TK_VAR", "begin": 28, "end": 29, "body": "y"}

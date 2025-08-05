@@ -326,8 +326,8 @@ typedef Status(cmd_func_t)(Interp &i, std::vector<string> &argv,
                            Privdata *privdata);
 
 struct Cmd {
-  Cmd(const string &name_, cmd_func_t *func_, Privdata *privdata_, Cmd *next_)
-      : name(name_), func(func_), privdata(privdata_), next(next_) {}
+  Cmd(const string &name_, cmd_func_t *func_, Privdata *privdata_)
+      : name(name_), func(func_), privdata(privdata_) {}
   ~Cmd() {
     if (privdata)
       delete privdata;
@@ -336,7 +336,6 @@ struct Cmd {
   string name;
   cmd_func_t *func;
   Privdata *privdata;
-  Cmd *next;
 };
 
 struct Var {
@@ -350,7 +349,7 @@ struct Var {
 };
 
 struct CallFrame {
-  CallFrame() : vars(nullptr), parent(nullptr) {}
+  CallFrame() : parent(nullptr), vars(nullptr) {}
   ~CallFrame() {
     Var *v = vars;
     while (v != nullptr) {
@@ -359,23 +358,21 @@ struct CallFrame {
       v = next;
     }
   }
-  Var *vars;
   CallFrame *parent;
+  Var *vars;
 };
 
 inline Status call_proc(Interp &i, std::vector<string> &argv,
                         Privdata *privdata);
 
 struct Interp {
-  Cmd *commands;
+  std::vector<Cmd *> commands;
   string result;
   CallFrame *callframe;
   size_t level;
   bool trace_parser;
 
-  Interp()
-      : level(0), commands(nullptr), callframe(new CallFrame()),
-        trace_parser(false) {}
+  Interp() : level(0), callframe(new CallFrame()), trace_parser(false) {}
 
   ~Interp() {
     CallFrame *cf = callframe;
@@ -385,7 +382,7 @@ struct Interp {
       cf = next;
     }
 
-    for (Cmd *c = commands; c != nullptr; c = c->next) {
+    for (Cmd *c : commands) {
       delete c;
     }
   }
@@ -402,7 +399,7 @@ struct Interp {
   }
 
   Cmd *get_command(const string &name) const {
-    for (Cmd *c = commands; c != nullptr; c = c->next) {
+    for (Cmd *c : commands) {
       if (c->name.compare(name) == 0) {
         return c;
       }
@@ -419,8 +416,7 @@ struct Interp {
       result = err;
       return S_ERR;
     }
-    Cmd *cmd = new Cmd(name, fn, privdata, commands);
-    commands = cmd;
+    commands.push_back(new Cmd(name, fn, privdata));
     return S_OK;
   }
 
@@ -688,44 +684,39 @@ struct Interp {
       // load bearing
       TokenType prevtype = p.token;
 
-      p.next_token();
-
-      // Exit if there's a parser error
-      if (ret != S_OK) {
-        return ret;
-      }
+      Token token = p.next_token();
 
       std::string_view t = p.token_body();
 
       // Exit if we're at EOF
-      if (p.token == TK_EOF) {
+      if (token == TK_EOF) {
         break;
       }
 
-      if (p.token == TK_VAR) {
+      if (token == TK_VAR) {
         Var *v = get_var(t);
         if (v == nullptr) {
           C_ERR("variable not found: '" << t << "'");
           return S_ERR;
         }
         t = *v->val;
-      } else if (p.token == TK_CMD) {
+      } else if (token == TK_CMD) {
         ret = eval(t);
         if (ret != S_OK) {
           return ret;
         }
         t = result;
-      } else if (p.token == TK_ESC) {
+      } else if (token == TK_ESC) {
         // No escape handling
-      } else if (p.token == TK_SEP) {
-        prevtype = p.token;
+      } else if (token == TK_SEP) {
+        prevtype = token;
         continue;
       }
 
       // Once we hit EOL, we should have a command to evaluate
-      if (p.token == TK_EOL) {
+      if (token == TK_EOL) {
         Cmd *c;
-        prevtype = p.token;
+        prevtype = token;
 
         // Look up the command; if we find one,
         // call it with the value otherwise
@@ -754,7 +745,7 @@ struct Interp {
       } else {
         argv[argv.size() - 1] += t;
       }
-      prevtype = p.token;
+      prevtype = token;
     }
     return S_OK;
   }

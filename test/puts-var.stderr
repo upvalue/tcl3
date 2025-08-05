@@ -8,6 +8,6 @@
 {"type": "TK_SEP", "begin": 13, "end": 14, "body": " "}
 {"type": "TK_ESC", "begin": 15, "end": 25, "body": "forty-two "}
 {"type": "TK_VAR", "begin": 26, "end": 27, "body": "x"}
-{"type": "TK_ESC", "begin": 27, "end": 27, "body": ""}
+{"type": "TK_ESC", "begin": 28, "end": 28, "body": ""}
 {"type": "TK_EOL", "begin": 28, "end": 29, "body": "\n"}
 {"type": "TK_EOF", "begin": 28, "end": 29, "body": "\n"}
