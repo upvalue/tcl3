@@ -239,6 +239,7 @@ struct Parser {
           if (getc() == '\n')
             break;
         }
+        std::cerr << "comment loop back at " << cursor << std::endl;
         goto start;
       }
       case '"': {

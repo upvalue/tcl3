@@ -10,16 +10,16 @@ const Status = enum {
 };
 
 const Token = enum {
-    TK_ESC,
-    TK_STR,
-    TK_CMD,
-    TK_VAR,
-    TK_SEP,
-    TK_EOL,
+    ESC,
+    STR,
+    CMD,
+    VAR,
+    SEP,
+    EOL,
     // We can do away with this in Zig because we can instead use
     // optional values to know when to terminate. However it's kept
     // to make output easy to compare with the C++ version.
-    TK_EOF,
+    EOF,
 };
 
 const Parser = struct {
@@ -35,7 +35,7 @@ const Parser = struct {
     in_command: bool = false,
 
     brace_level: usize = 0,
-    token: Token = Token.TK_EOF,
+    token: Token = Token.EOF,
     terminating_char: u8 = 0,
 
     pub fn done(p: *Parser) bool {
@@ -69,23 +69,49 @@ const Parser = struct {
 
     fn _next(p: *Parser) Token {
         if (p.done()) {
-            if (p.token != Token.TK_EOF and p.token != Token.TK_EOL) {
-                p.token = Token.TK_EOL;
+            if (p.token != Token.EOF and p.token != Token.EOL) {
+                p.token = Token.EOL;
             } else {
-                p.token = Token.TK_EOF;
+                p.token = Token.EOF;
             }
             return p.token;
         }
 
-        p.token = Token.TK_ESC;
+        p.token = Token.ESC;
         p.begin = p.cursor;
 
         var c: u8 = 0;
+        var adj: usize = 0;
 
         while (!p.done()) {
             c = p.getc();
-            // print("char: {c}, cursor: {d}\n", .{ c, p.cursor });
             switch (c) {
+                '#' => {
+                    if (p.in_string or p.in_quote or p.in_brace) {
+                        continue;
+                    }
+
+                    while (!p.done()) {
+                        if (p.getc() == '\n') {
+                            break;
+                        }
+                    }
+
+                    // print("comment loop back at {d}\n", .{p.cursor});
+
+                    return @call(.always_tail, Parser._next, .{p});
+                },
+                '"' => {
+                    if (p.in_quote) {
+                        p.in_quote = false;
+                        adj = 1;
+                        break;
+                    }
+
+                    p.in_quote = true;
+                    p.begin += 1;
+                    adj = 1;
+                },
                 '\n', '\r', '\t', ';', ' ' => {
                     if (p.in_brace) {
                         continue;
@@ -101,7 +127,7 @@ const Parser = struct {
                         continue;
                     }
 
-                    p.token = if (c == '\n' or c == ';') Token.TK_EOL else Token.TK_SEP;
+                    p.token = if (c == '\n' or c == ';') Token.EOL else Token.SEP;
                     p.consume_whitespace();
                     break;
                 },
@@ -113,7 +139,7 @@ const Parser = struct {
             }
         }
 
-        p.end = p.cursor;
+        p.end = p.cursor - adj;
 
         return p.token;
     }
@@ -121,7 +147,7 @@ const Parser = struct {
     pub fn next(p: *Parser) ?Token {
         const t = _next(p);
         if (p.trace) {
-            std.debug.print("{{\"type\": \"{s}\", \"begin\": {}, \"end\": {}, \"body\": \"{}\"}}\n", .{ @tagName(t), p.begin, p.end, std.zig.fmtEscapes(p.body[p.begin..p.end]) });
+            std.debug.print("{{\"type\": \"TK_{s}\", \"begin\": {}, \"end\": {}, \"body\": \"{}\"}}\n", .{ @tagName(t), p.begin, p.end, std.zig.fmtEscapes(p.body[p.begin..p.end]) });
         }
         return t;
     }
@@ -129,12 +155,12 @@ const Parser = struct {
 
 pub fn main() !void {
     var p = Parser{
-        .body = "test\n",
+        .body = "puts \"hi\"",
         .trace = true,
     };
 
     while (p.next()) |token| {
-        if (token == Token.TK_EOF) {
+        if (token == Token.EOF) {
             break;
         }
     }
