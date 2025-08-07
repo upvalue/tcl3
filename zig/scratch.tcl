@@ -1,2 +1,1 @@
-set hi 5
-puts $hi
+puts hello 

@@ -239,7 +239,6 @@ struct Parser {
           if (getc() == '\n')
             break;
         }
-        std::cerr << "comment loop back at " << cursor << std::endl;
         goto start;
       }
       case '"': {
@@ -667,9 +666,7 @@ struct Interp {
     // Tracks command and argument
     std::vector<string> argv;
 
-    size_t iter = 0;
     while (1) {
-      iter++;
       // Previous token type -- note that the parser default value (TK_EOL) is
       // load bearing
       TokenType prevtype = p.token;
@@ -681,9 +678,7 @@ struct Interp {
       // Exit if we're at EOF
       if (token == TK_EOF) {
         break;
-      }
-
-      if (token == TK_VAR) {
+      } else if (token == TK_VAR) {
         Var *v = get_var(t);
         if (v == nullptr) {
           C_ERR("variable not found: '" << t << "'");
@@ -696,15 +691,11 @@ struct Interp {
           return ret;
         }
         t = result;
-      } else if (token == TK_ESC) {
-        // No escape handling
       } else if (token == TK_SEP) {
         prevtype = token;
         continue;
-      }
-
-      // Once we hit EOL, we should have a command to evaluate
-      if (token == TK_EOL) {
+      } else if (token == TK_EOL) {
+        // Once we hit EOL, we should have a command to evaluate
         Cmd *c;
         prevtype = token;
 

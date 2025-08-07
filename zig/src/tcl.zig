@@ -1,9 +1,17 @@
 const std = @import("std");
 const print = std.debug.print;
 
+pub const Error = error{
+    General,
+    Arity,
+    CommandNotFound,
+    CommandAlreadyDefined,
+};
+
 pub const Status = enum {
     OK,
-    ERR,
+    // We remove the ERR code in Zig because error unions
+    // are more ergonomic.
     RETURN,
     BREAK,
     CONTINUE,
@@ -23,7 +31,7 @@ pub const Token = enum {
 };
 
 pub const Parser = struct {
-    body: []const u8,
+    body: []u8,
     trace: bool = false,
     cursor: usize = 0,
     begin: usize = 0,
@@ -35,7 +43,7 @@ pub const Parser = struct {
     in_command: bool = false,
 
     brace_level: usize = 0,
-    token: Token = Token.EOF,
+    token: Token = Token.EOL,
     terminating_char: u8 = 0,
 
     pub fn done(p: *Parser) bool {
@@ -54,6 +62,10 @@ pub const Parser = struct {
 
     pub fn back(p: *Parser) void {
         p.cursor -= 1;
+    }
+
+    pub fn token_body(p: *Parser) []u8 {
+        return p.body[p.begin..p.end];
     }
 
     pub fn consume_whitespace(p: *Parser) void {
@@ -209,7 +221,7 @@ pub const Parser = struct {
         return p.token;
     }
 
-    pub fn next(p: *Parser) ?Token {
+    pub fn next(p: *Parser) Token {
         const t = _next(p);
         if (p.trace) {
             std.debug.print("{{\"type\": \"TK_{s}\", \"begin\": {}, \"end\": {}, \"body\": \"{}\"}}\n", .{ @tagName(t), p.begin, p.end, std.zig.fmtEscapes(p.body[p.begin..p.end]) });
@@ -218,15 +230,150 @@ pub const Parser = struct {
     }
 };
 
-pub fn eval_string(body: []const u8) !void {
-    var p = Parser{
-        .body = body,
-        .trace = true,
-    };
+pub const CmdFunc = fn (*Interp, std.ArrayList([]u8), ?*anyopaque) Error!Status;
 
-    while (p.next()) |token| {
-        if (token == Token.EOF) {
-            break;
-        }
+pub const Cmd = struct {
+    name: []u8,
+    cmd_func: *const CmdFunc,
+    string: ?*[]u8 = null,
+    privdata: ?*anyopaque = null,
+
+    pub fn deinit(self: *const Cmd, allocator: std.mem.Allocator) void {
+        allocator.free(self.name);
     }
+};
+
+fn check_arity(interp: *Interp, name: []const u8, argv: std.ArrayList([]u8), min: usize, max: usize) Error!Status {
+    if (argv.items.len < min or argv.items.len > max) {
+        interp.set_result_fmt("wrong number of arguments to {s}: expected {d}-{d}, got {d}", .{ name, min, max, argv.items.len }) catch {
+            return error.General;
+        };
+        return error.Arity;
+    }
+    return Status.OK;
 }
+
+fn puts(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+    _ = try check_arity(i, "puts", argv, 2, 2);
+
+    std.debug.print("{s}\n", .{argv.items[1]});
+    return Status.OK;
+}
+
+pub const Interp = struct {
+    commands: std.ArrayList(Cmd),
+    allocator: std.mem.Allocator,
+    trace_parser: bool,
+    result: ?[]u8 = null,
+
+    pub fn init(allocator: std.mem.Allocator) Interp {
+        const result = allocator.alloc(u8, 0) catch unreachable;
+        return Interp{
+            .commands = std.ArrayList(Cmd).init(allocator),
+            .allocator = allocator,
+            .trace_parser = false,
+            .result = result,
+        };
+    }
+
+    pub fn deinit(self: *Interp) void {
+        if (self.result) |r| {
+            std.debug.print("freeing result: {s}\n", .{r});
+            self.allocator.free(r);
+        }
+
+        for (self.commands.items) |c| c.deinit(self.allocator);
+        self.commands.deinit();
+
+        self.* = undefined;
+    }
+
+    pub fn set_result(self: *Interp, result: []u8) !void {
+        if (self.result) |r| {
+            self.allocator.free(r);
+        }
+        self.result = try self.allocator.dupe(u8, result);
+    }
+
+    pub fn set_result_fmt(self: *Interp, comptime format: []const u8, args: anytype) !void {
+        const result = std.fmt.allocPrint(self.allocator, format, args) catch unreachable;
+        if (self.result) |r| {
+            self.allocator.free(r);
+        }
+        self.result = result;
+    }
+
+    pub fn get_command(self: *Interp, cmd: []const u8) ?*Cmd {
+        var idx: usize = 0;
+        while (idx < self.commands.items.len) : (idx += 1) {
+            if (std.mem.eql(u8, self.commands.items[idx].name, cmd)) {
+                return &self.commands.items[idx];
+            }
+        }
+        return null;
+    }
+
+    pub fn register_command(self: *Interp, name: []const u8, cmd_func: *const CmdFunc, privdata: ?*anyopaque) Error!Status {
+        if (self.get_command(name)) |_| {
+            self.set_result_fmt("command already defined: '{s}'", .{name}) catch {};
+            return error.CommandAlreadyDefined;
+        }
+        const duped_name = self.allocator.dupe(u8, name) catch return error.General;
+        self.commands.append(.{ .name = duped_name, .cmd_func = cmd_func, .privdata = privdata }) catch return error.General;
+        return Status.OK;
+    }
+
+    pub fn register_core_commands(self: *Interp) !void {
+        _ = try self.register_command("puts", puts, null);
+    }
+
+    pub fn eval(self: *Interp, str: []u8) !Status {
+        var argv = std.ArrayList([]u8).init(self.allocator);
+        defer argv.deinit();
+        defer for (argv.items) |a| {
+            self.allocator.free(a);
+        };
+
+        var p = Parser{
+            .body = str,
+            .trace = self.trace_parser,
+        };
+
+        while (true) {
+            var prevtype = p.token;
+            const token = p.next();
+            const t = p.token_body();
+
+            if (token == Token.EOF) {
+                break;
+            } else if (token == Token.SEP) {
+                prevtype = p.token;
+                continue;
+            } else if (token == Token.EOL) {
+                // Command
+                prevtype = p.token;
+
+                if (argv.items.len > 0) {
+                    if (self.get_command(argv.items[0])) |c| {
+                        _ = try c.cmd_func(self, argv, c.privdata);
+                    } else {
+                        try self.set_result_fmt("command not found: '{s}'", .{argv.items[0]});
+                        return error.CommandNotFound;
+                    }
+                }
+            }
+
+            if (prevtype == Token.SEP or prevtype == Token.EOL) {
+                // dup string
+                const duped = self.allocator.dupe(u8, t) catch return error.General;
+                try argv.append(duped);
+            } else {
+                // append to prev token
+            }
+
+            prevtype = token;
+        }
+
+        return Status.OK;
+    }
+};

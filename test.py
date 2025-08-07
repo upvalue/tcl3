@@ -26,7 +26,10 @@ def parse_args():
 def exec_test(filepath):
     cmd = [args.impl, filepath]
     env = os.environ.copy()
-    env['PARSER_STDERR'] = '1'
+    if 'picol' in filepath:
+        env['PARSER_STDERR'] = '1'
+    else:
+        cmd = cmd + ['--trace-parser']
     result = subprocess.run(cmd, capture_output=True, text=True, env=env)
     return result.stdout.strip(), result.stderr.strip()
 
