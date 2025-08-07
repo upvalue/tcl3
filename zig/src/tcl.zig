@@ -1,7 +1,7 @@
 const std = @import("std");
 const print = std.debug.print;
 
-const Status = enum {
+pub const Status = enum {
     OK,
     ERR,
     RETURN,
@@ -9,7 +9,7 @@ const Status = enum {
     CONTINUE,
 };
 
-const Token = enum {
+pub const Token = enum {
     ESC,
     STR,
     CMD,
@@ -22,7 +22,7 @@ const Token = enum {
     EOF,
 };
 
-const Parser = struct {
+pub const Parser = struct {
     body: []const u8,
     trace: bool = false,
     cursor: usize = 0,
@@ -131,7 +131,6 @@ const Parser = struct {
 
                     var sub: Parser = .{
                         .body = p.body[p.cursor..],
-                        .trace = p.trace,
                     };
 
                     p.begin += 1;
@@ -229,22 +228,5 @@ pub fn eval_string(body: []const u8) !void {
         if (token == Token.EOF) {
             break;
         }
-    }
-}
-
-pub fn main() !void {
-    var args = std.process.args();
-    _ = args.skip();
-    var body: []const u8 = "";
-
-    if (args.next()) |arg| {
-        const file = try std.fs.cwd().openFile(arg, .{});
-        defer file.close();
-
-        body = try file.readToEndAlloc(std.heap.page_allocator, 1024);
-        try eval_string(body);
-        std.heap.page_allocator.free(body);
-    } else {
-        print("not supported yet\n", .{});
     }
 }
