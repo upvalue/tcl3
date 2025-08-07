@@ -6,6 +6,7 @@ pub const Error = error{
     Arity,
     CommandNotFound,
     CommandAlreadyDefined,
+    VariableNotFound,
 };
 
 pub const Status = enum {
@@ -243,6 +244,44 @@ pub const Cmd = struct {
     }
 };
 
+pub const Var = struct {
+    name: []u8,
+    value: []u8,
+
+    pub fn init(allocator: std.mem.Allocator, name: []u8, value: []u8) !Var {
+        return Var{
+            .name = allocator.dupe(u8, name) catch return error.General,
+            .value = allocator.dupe(u8, value) catch return error.General,
+        };
+    }
+
+    pub fn deinit(self: *const Var, allocator: std.mem.Allocator) void {
+        allocator.free(self.name);
+        allocator.free(self.value);
+    }
+
+    pub fn set_value(self: *Var, allocator: std.mem.Allocator, value: []u8) !void {
+        allocator.free(self.value);
+        self.value = allocator.dupe(u8, value) catch return error.General;
+    }
+};
+
+pub const CallFrame = struct {
+    vars: std.ArrayList(Var),
+
+    pub fn init(allocator: std.mem.Allocator) CallFrame {
+        return CallFrame{
+            .vars = std.ArrayList(Var).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *const CallFrame, allocator: std.mem.Allocator) void {
+        std.debug.print("deiniting callframe\n", .{});
+        for (self.vars.items) |v| v.deinit(allocator);
+        self.vars.deinit();
+    }
+};
+
 fn check_arity(interp: *Interp, name: []const u8, argv: std.ArrayList([]u8), min: usize, max: usize) Error!Status {
     if (argv.items.len < min or argv.items.len > max) {
         interp.set_result_fmt("wrong number of arguments to {s}: expected {d}-{d}, got {d}", .{ name, min, max, argv.items.len }) catch {
@@ -253,7 +292,17 @@ fn check_arity(interp: *Interp, name: []const u8, argv: std.ArrayList([]u8), min
     return Status.OK;
 }
 
-fn puts(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+fn tcl_set(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+    _ = try check_arity(i, "set", argv, 3, 3);
+
+    const name = argv.items[1];
+    const value = argv.items[2];
+    try i.set_var(name, value);
+
+    return Status.OK;
+}
+
+fn tcl_puts(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
     _ = try check_arity(i, "puts", argv, 2, 2);
 
     std.debug.print("{s}\n", .{argv.items[1]});
@@ -262,28 +311,39 @@ fn puts(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
 
 pub const Interp = struct {
     commands: std.ArrayList(Cmd),
+    callframes: std.ArrayList(CallFrame),
     allocator: std.mem.Allocator,
     trace_parser: bool,
     result: ?[]u8 = null,
 
-    pub fn init(allocator: std.mem.Allocator) Interp {
+    pub fn init(allocator: std.mem.Allocator) !Interp {
         const result = allocator.alloc(u8, 0) catch unreachable;
-        return Interp{
+        var i = Interp{
             .commands = std.ArrayList(Cmd).init(allocator),
+            .callframes = std.ArrayList(CallFrame).init(allocator),
             .allocator = allocator,
             .trace_parser = false,
             .result = result,
         };
+
+        const cf = CallFrame.init(allocator);
+        i.callframes.append(cf) catch return error.General;
+
+        try i.register_core_commands();
+
+        return i;
     }
 
     pub fn deinit(self: *Interp) void {
         if (self.result) |r| {
-            std.debug.print("freeing result: {s}\n", .{r});
             self.allocator.free(r);
         }
 
         for (self.commands.items) |c| c.deinit(self.allocator);
         self.commands.deinit();
+
+        for (self.callframes.items) |cf| cf.deinit(self.allocator);
+        self.callframes.deinit();
 
         self.* = undefined;
     }
@@ -302,6 +362,29 @@ pub const Interp = struct {
         }
         self.result = result;
     }
+
+    ///// CALL FRAMES
+    pub fn get_var(self: *Interp, name: []const u8) ?*Var {
+        const cf = &self.callframes.items[self.callframes.items.len - 1];
+        for (cf.vars.items, 0..) |v, i| {
+            if (std.mem.eql(u8, v.name, name)) {
+                return &cf.vars.items[i];
+            }
+        }
+        return null;
+    }
+
+    pub fn set_var(self: *Interp, name: []u8, value: []u8) !void {
+        const cf = &self.callframes.items[self.callframes.items.len - 1];
+        if (self.get_var(name)) |v| {
+            try v.set_value(self.allocator, value);
+        } else {
+            const variable = Var.init(self.allocator, name, value) catch return error.General;
+            cf.vars.append(variable) catch return error.General;
+        }
+    }
+
+    ///// COMMANDS
 
     pub fn get_command(self: *Interp, cmd: []const u8) ?*Cmd {
         var idx: usize = 0;
@@ -324,7 +407,8 @@ pub const Interp = struct {
     }
 
     pub fn register_core_commands(self: *Interp) !void {
-        _ = try self.register_command("puts", puts, null);
+        _ = try self.register_command("puts", tcl_puts, null);
+        _ = try self.register_command("set", tcl_set, null);
     }
 
     pub fn eval(self: *Interp, str: []u8) !Status {
@@ -342,10 +426,18 @@ pub const Interp = struct {
         while (true) {
             var prevtype = p.token;
             const token = p.next();
-            const t = p.token_body();
+            var t = p.token_body();
 
             if (token == Token.EOF) {
                 break;
+            } else if (token == Token.VAR) {
+                const variable = self.get_var(t);
+                if (variable) |v| {
+                    t = v.value;
+                } else {
+                    try self.set_result_fmt("variable not found: '{s}'", .{t});
+                    return error.VariableNotFound;
+                }
             } else if (token == Token.SEP) {
                 prevtype = p.token;
                 continue;
@@ -361,6 +453,13 @@ pub const Interp = struct {
                         return error.CommandNotFound;
                     }
                 }
+
+                for (argv.items) |a| {
+                    self.allocator.free(a);
+                }
+                argv.clearRetainingCapacity();
+
+                continue;
             }
 
             if (prevtype == Token.SEP or prevtype == Token.EOL) {

@@ -1,1 +1,2 @@
-puts hello 
+set x 5
+puts $x

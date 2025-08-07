@@ -24,7 +24,9 @@ pub fn exec(i: *tcl.Interp, str: []u8, parser_only: bool) !void {
         while (p.next() != tcl.Token.EOF) {}
     } else {
         std.debug.print("eval `{s}`\n", .{str});
-        _ = try i.eval(str);
+        _ = i.eval(str) catch {
+            std.debug.print("error: {?s}\n", .{i.result});
+        };
     }
 }
 
@@ -74,14 +76,12 @@ pub fn main() !void {
         alloc = std.heap.c_allocator;
     }
 
-    var i: tcl.Interp = tcl.Interp.init(alloc);
+    var i: tcl.Interp = try tcl.Interp.init(alloc);
     defer {
         i.deinit();
     }
 
     i.trace_parser = parser_trace;
-
-    try i.register_core_commands();
 
     // Operate on files
     for (res.positionals[0]) |arg| {
