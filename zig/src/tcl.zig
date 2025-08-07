@@ -2,11 +2,11 @@ const std = @import("std");
 const print = std.debug.print;
 
 const Status = enum {
-    S_OK,
-    S_ERR,
-    S_RETURN,
-    S_BREAK,
-    S_CONTINUE,
+    OK,
+    ERR,
+    RETURN,
+    BREAK,
+    CONTINUE,
 };
 
 const Token = enum {
@@ -67,6 +67,12 @@ const Parser = struct {
         }
     }
 
+    pub fn recurse(p: *Parser, sub: *Parser, terminating_char: u8) void {
+        sub.terminating_char = terminating_char;
+        while (sub.next() != Token.EOF) {}
+        p.cursor = p.cursor + sub.cursor;
+    }
+
     fn _next(p: *Parser) Token {
         if (p.done()) {
             if (p.token != Token.EOF and p.token != Token.EOL) {
@@ -85,7 +91,69 @@ const Parser = struct {
 
         while (!p.done()) {
             c = p.getc();
+
+            if (p.terminating_char == c) {
+                return Token.EOF;
+            }
+
             switch (c) {
+                '{' => {
+                    if (p.in_quote or p.in_string) {
+                        continue;
+                    }
+
+                    if (!p.in_brace) {
+                        p.begin += 1;
+                        p.token = Token.STR;
+                        p.in_brace = true;
+                    }
+
+                    p.brace_level += 1;
+                },
+                '}' => {
+                    if (p.in_quote or p.in_string) {
+                        continue;
+                    }
+
+                    if (p.brace_level > 0) {
+                        p.brace_level -= 1;
+                        if (p.brace_level == 0) {
+                            p.in_brace = false;
+                            adj = 1;
+                            break;
+                        }
+                    }
+                },
+                '[' => {
+                    if (p.in_string or p.in_quote or p.in_brace) {
+                        continue;
+                    }
+
+                    var sub: Parser = .{
+                        .body = p.body[p.cursor..],
+                        .trace = p.trace,
+                    };
+
+                    p.begin += 1;
+                    p.recurse(&sub, ']');
+                    adj = 1;
+                    p.token = Token.CMD;
+                    break;
+                },
+                '$' => {
+                    if (p.in_string or p.in_brace) {
+                        continue;
+                    }
+
+                    if (p.in_quote and p.cursor != p.begin + 1) {
+                        p.back();
+                        break;
+                    }
+
+                    p.begin += 1;
+                    p.token = Token.VAR;
+                    p.in_string = true;
+                },
                 '#' => {
                     if (p.in_string or p.in_quote or p.in_brace) {
                         continue;
@@ -96,8 +164,6 @@ const Parser = struct {
                             break;
                         }
                     }
-
-                    // print("comment loop back at {d}\n", .{p.cursor});
 
                     return @call(.always_tail, Parser._next, .{p});
                 },
@@ -153,9 +219,9 @@ const Parser = struct {
     }
 };
 
-pub fn main() !void {
+pub fn eval_string(body: []const u8) !void {
     var p = Parser{
-        .body = "puts \"hi\"",
+        .body = body,
         .trace = true,
     };
 
@@ -163,5 +229,22 @@ pub fn main() !void {
         if (token == Token.EOF) {
             break;
         }
+    }
+}
+
+pub fn main() !void {
+    var args = std.process.args();
+    _ = args.skip();
+    var body: []const u8 = "";
+
+    if (args.next()) |arg| {
+        const file = try std.fs.cwd().openFile(arg, .{});
+        defer file.close();
+
+        body = try file.readToEndAlloc(std.heap.page_allocator, 1024);
+        try eval_string(body);
+        std.heap.page_allocator.free(body);
+    } else {
+        print("not supported yet\n", .{});
     }
 }
