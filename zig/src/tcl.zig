@@ -18,13 +18,15 @@ const stdio = std.io.getStdOut().writer();
 
 // - Memory management code feels a little janky, maybe it can be simplified
 
-pub const Error = error{
+pub const TclError = error{
     General,
     Arity,
     CommandNotFound,
     CommandAlreadyDefined,
     VariableNotFound,
 };
+
+pub const Error = TclError || std.mem.Allocator.Error || std.fmt.AllocPrintError || std.fmt.ParseIntError;
 
 pub const Status = enum {
     OK,
@@ -281,8 +283,8 @@ pub const Var = struct {
 
     pub fn init(allocator: std.mem.Allocator, name: []u8, value: []u8) !Var {
         return Var{
-            .name = allocator.dupe(u8, name) catch return error.General,
-            .value = allocator.dupe(u8, value) catch return error.General,
+            .name = try allocator.dupe(u8, name),
+            .value = try allocator.dupe(u8, value),
         };
     }
 
@@ -293,7 +295,7 @@ pub const Var = struct {
 
     pub fn set_value(self: *Var, allocator: std.mem.Allocator, value: []u8) !void {
         allocator.free(self.value);
-        self.value = allocator.dupe(u8, value) catch return error.General;
+        self.value = try allocator.dupe(u8, value);
     }
 };
 
@@ -314,9 +316,7 @@ pub const CallFrame = struct {
 
 fn check_arity(interp: *Interp, name: []const u8, argv: std.ArrayList([]u8), min: usize, max: usize) Error!Status {
     if (argv.items.len < min or argv.items.len > max) {
-        interp.set_result_fmt("wrong number of arguments to {s}: expected {d}-{d}, got {d}", .{ name, min, max, argv.items.len }) catch {
-            return error.General;
-        };
+        try interp.set_result_fmt("wrong number of arguments to {s}: expected {d}-{d}, got {d}", .{ name, min, max, argv.items.len });
         return error.Arity;
     }
     return Status.OK;
@@ -356,25 +356,19 @@ fn cmd_while(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status 
     const body = argv.items[2];
 
     while (true) {
-        var res = i.eval(cond) catch {
-            return error.General;
-        };
+        var res = try i.eval(cond);
 
         if (res != Status.OK) {
             return res;
         }
 
-        const val = std.fmt.parseInt(i64, i.result.?, 10) catch {
-            return error.General;
-        };
+        const val = try std.fmt.parseInt(i64, i.result.?, 10);
 
         if (val == 0) {
             return Status.OK;
         }
 
-        res = i.eval(body) catch {
-            return error.General;
-        };
+        res = try i.eval(body);
 
         if (res == Status.CONTINUE or res == Status.OK) {
             continue;
@@ -388,16 +382,22 @@ fn cmd_while(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status 
     return Status.OK;
 }
 
+fn cmd_return(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
+    _ = try check_arity(i, "return", argv, 2, 2);
+    try i.set_result(argv.items[1]);
+    return Status.RETURN;
+}
+
 fn cmd_proc(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "proc", argv, 4, 4);
 
-    const alist = i.allocator.dupe(u8, argv.items[2]) catch return error.General;
-    const body = i.allocator.dupe(u8, argv.items[3]) catch return error.General;
+    const alist = try i.allocator.dupe(u8, argv.items[2]);
+    const body = try i.allocator.dupe(u8, argv.items[3]);
 
     // Allocate proc on heap
-    const ppd = i.allocator.create(ProcPrivdata) catch return error.General;
+    const ppd = try i.allocator.create(ProcPrivdata);
     ppd.* = ProcPrivdata{ .args = alist, .body = body };
-    const pd = i.allocator.create(Privdata) catch return error.General;
+    const pd = try i.allocator.create(Privdata);
     pd.* = Privdata{ .data = ppd, .finalizer = proc_finalizer };
 
     _ = try i.register_command(argv.items[1], call_proc, pd);
@@ -412,17 +412,13 @@ fn cmd_if(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
     const thenb = argv.items[2];
     const elseb = if (argv.items.len == 5) argv.items[4] else null;
 
-    const res = i.eval(cond) catch {
-        return error.General;
-    };
+    const res = try i.eval(cond);
 
     if (res != Status.OK) {
         return res;
     }
 
-    const val = std.fmt.parseInt(i64, i.result.?, 10) catch {
-        return error.General;
-    };
+    const val = try std.fmt.parseInt(i64, i.result.?, 10);
 
     if (val != 0) {
         return i.eval(thenb);
@@ -435,13 +431,9 @@ fn cmd_if(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
 fn cmd_math(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "math", argv, 3, 3);
 
-    const a = std.fmt.parseInt(i64, argv.items[1], 10) catch {
-        return error.General;
-    };
+    const a = try std.fmt.parseInt(i64, argv.items[1], 10);
 
-    const b = std.fmt.parseInt(i64, argv.items[2], 10) catch {
-        return error.General;
-    };
+    const b = try std.fmt.parseInt(i64, argv.items[2], 10);
 
     const cmd = argv.items[0];
 
@@ -480,7 +472,7 @@ fn proc_finalizer(allocator: std.mem.Allocator, data: *anyopaque) void {
 fn call_proc(i: *Interp, argv: std.ArrayList([]u8), privdata: ?*Privdata) Error!Status {
     const ppd: *ProcPrivdata = @alignCast(@ptrCast(privdata.?.data));
     const cf = CallFrame.init(i.allocator);
-    i.callframes.append(cf) catch return error.General;
+    try i.callframes.append(cf);
     defer i.drop_call_frame();
 
     var arity: u64 = 0;
@@ -501,7 +493,7 @@ fn call_proc(i: *Interp, argv: std.ArrayList([]u8), privdata: ?*Privdata) Error!
             j += 1;
         }
 
-        i.set_var(alist[start..j], argv.items[arity + 1]) catch return error.General;
+        try i.set_var(alist[start..j], argv.items[arity + 1]);
 
         arity += 1;
 
@@ -513,7 +505,7 @@ fn call_proc(i: *Interp, argv: std.ArrayList([]u8), privdata: ?*Privdata) Error!
     var status = Status.OK;
 
     if (arity != argv.items.len - 1) {
-        i.set_result_fmt("wrong number of arguments for {s}: expected {d}, got {d}", .{ argv.items[0], arity, argv.items.len - 1 }) catch return error.General;
+        try i.set_result_fmt("wrong number of arguments for {s}: expected {d}, got {d}", .{ argv.items[0], arity, argv.items.len - 1 });
         return error.Arity;
     }
 
@@ -534,7 +526,7 @@ pub const Interp = struct {
     result: ?[]u8 = null,
 
     pub fn init(allocator: std.mem.Allocator) !Interp {
-        const result = allocator.alloc(u8, 0) catch unreachable;
+        const result = try allocator.alloc(u8, 0);
         var i = Interp{
             .commands = std.ArrayList(Cmd).init(allocator),
             .callframes = std.ArrayList(CallFrame).init(allocator),
@@ -544,7 +536,7 @@ pub const Interp = struct {
         };
 
         const cf = CallFrame.init(allocator);
-        i.callframes.append(cf) catch return error.General;
+        try i.callframes.append(cf);
 
         try i.register_core_commands();
 
@@ -573,7 +565,7 @@ pub const Interp = struct {
     }
 
     pub fn set_result_fmt(self: *Interp, comptime format: []const u8, args: anytype) !void {
-        const result = std.fmt.allocPrint(self.allocator, format, args) catch unreachable;
+        const result = try std.fmt.allocPrint(self.allocator, format, args);
         if (self.result) |r| {
             self.allocator.free(r);
         }
@@ -596,8 +588,8 @@ pub const Interp = struct {
         if (self.get_var(name)) |v| {
             try v.set_value(self.allocator, value);
         } else {
-            const variable = Var.init(self.allocator, name, value) catch return error.General;
-            cf.vars.append(variable) catch return error.General;
+            const variable = try Var.init(self.allocator, name, value);
+            try cf.vars.append(variable);
         }
     }
 
@@ -620,11 +612,11 @@ pub const Interp = struct {
 
     pub fn register_command(self: *Interp, name: []const u8, cmd_func: *const CmdFunc, privdata: ?*Privdata) Error!Status {
         if (self.get_command(name)) |_| {
-            self.set_result_fmt("command already defined: '{s}'", .{name}) catch {};
+            try self.set_result_fmt("command already defined: '{s}'", .{name});
             return error.CommandAlreadyDefined;
         }
-        const duped_name = self.allocator.dupe(u8, name) catch return error.General;
-        self.commands.append(.{ .name = duped_name, .cmd_func = cmd_func, .privdata = privdata }) catch return error.General;
+        const duped_name = try self.allocator.dupe(u8, name);
+        try self.commands.append(.{ .name = duped_name, .cmd_func = cmd_func, .privdata = privdata });
         return Status.OK;
     }
 
@@ -632,6 +624,7 @@ pub const Interp = struct {
         _ = try self.register_command("set", cmd_set, null);
         _ = try self.register_command("puts", cmd_puts, null);
         _ = try self.register_command("proc", cmd_proc, null);
+        _ = try self.register_command("return", cmd_return, null);
 
         // Branching and flow control
         _ = try self.register_command("if", cmd_if, null);
@@ -714,14 +707,14 @@ pub const Interp = struct {
 
             if (prevtype == Token.SEP or prevtype == Token.EOL) {
                 // dup string
-                const duped = self.allocator.dupe(u8, t) catch return error.General;
-                argv.append(duped) catch return error.General;
+                const duped = try self.allocator.dupe(u8, t);
+                try argv.append(duped);
             } else {
                 // append to prev token
                 const prev = argv.items[argv.items.len - 1];
-                const new = std.fmt.allocPrint(self.allocator, "{s}{s}", .{ prev, t }) catch return error.General;
+                const new = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ prev, t });
                 self.allocator.free(prev);
-                argv.append(new) catch return error.General;
+                try argv.append(new);
             }
 
             prevtype = token;
