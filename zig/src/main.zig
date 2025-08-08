@@ -14,6 +14,8 @@ const help =
     \\
 ;
 
+const ln = @cImport(@cInclude("linenoise.h"));
+
 pub fn exec(i: *tcl.Interp, str: []u8, parser_only: bool) !void {
     if (parser_only) {
         var p = tcl.Parser{
@@ -51,7 +53,7 @@ pub fn main() !void {
     };
     defer res.deinit();
 
-    const repl = false;
+    const repl = res.args.repl != 0;
     const parser_trace = res.args.@"trace-parser" != 0;
     const parser_only = res.args.@"parser-only" != 0;
     var alloc = gpaalloc.allocator();
@@ -102,5 +104,18 @@ pub fn main() !void {
         try exec(&i, content, parser_only);
     }
 
-    if (repl) {}
+    if (repl) {
+        while (true) {
+            const line = ln.linenoise("tcl> ");
+
+            if (line == null) {
+                break;
+            }
+
+            const zigln = std.mem.span(line);
+            try exec(&i, zigln, parser_only);
+
+            ln.linenoiseFree(line);
+        }
+    }
 }

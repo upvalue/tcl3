@@ -37,6 +37,11 @@ pub fn build(b: *std.Build) void {
 
     exe.root_module.addImport("clap", clap.module("clap"));
 
+    // Add linenoise (C) for REPL input handling
+    exe.addCSourceFile(.{ .file = b.path("../vendor/linenoise.c"), .flags = &.{} });
+    exe.addIncludePath(b.path("../vendor"));
+    exe.linkLibC();
+
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
