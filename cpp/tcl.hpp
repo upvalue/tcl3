@@ -251,6 +251,7 @@ struct Parser {
         in_quote = true;
         begin++;
         adj = 1;
+        continue;
       }
       case ' ':
       case '\n':

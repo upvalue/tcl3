@@ -14,7 +14,6 @@ const stdio = std.io.getStdOut().writer();
 // - Zig has nicer features for unwinding the stack, but now there's a disjoint
 // error/status union that is returned from a lot of things. Maybe there's a better
 // way to combine those so you're not combining try and then if branches?
-// As well "converting" zig stdlib errors
 
 // - Memory management code feels a little janky, maybe it can be simplified
 
@@ -122,6 +121,8 @@ pub const Parser = struct {
         var adj: usize = 0;
 
         while (!p.done()) {
+            adj = 0;
+
             c = p.getc();
 
             if (p.terminating_char == c) {
@@ -130,9 +131,7 @@ pub const Parser = struct {
 
             switch (c) {
                 '{' => {
-                    if (p.in_quote or p.in_string) {
-                        continue;
-                    }
+                    if (p.in_quote or p.in_string) continue;
 
                     if (!p.in_brace) {
                         p.begin += 1;
@@ -143,9 +142,7 @@ pub const Parser = struct {
                     p.brace_level += 1;
                 },
                 '}' => {
-                    if (p.in_quote or p.in_string) {
-                        continue;
-                    }
+                    if (p.in_quote or p.in_string) continue;
 
                     if (p.brace_level > 0) {
                         p.brace_level -= 1;
@@ -157,9 +154,7 @@ pub const Parser = struct {
                     }
                 },
                 '[' => {
-                    if (p.in_string or p.in_quote or p.in_brace) {
-                        continue;
-                    }
+                    if (p.in_string or p.in_quote or p.in_brace) continue;
 
                     var sub: Parser = .{
                         .body = p.body[p.cursor..],
@@ -172,9 +167,7 @@ pub const Parser = struct {
                     break;
                 },
                 '$' => {
-                    if (p.in_string or p.in_brace) {
-                        continue;
-                    }
+                    if (p.in_string or p.in_brace) continue;
 
                     if (p.in_quote and p.cursor != p.begin + 1) {
                         p.back();
@@ -186,9 +179,7 @@ pub const Parser = struct {
                     p.in_string = true;
                 },
                 '#' => {
-                    if (p.in_string or p.in_quote or p.in_brace) {
-                        continue;
-                    }
+                    if (p.in_string or p.in_quote or p.in_brace) continue;
 
                     while (!p.done()) {
                         if (p.getc() == '\n') {
@@ -714,7 +705,7 @@ pub const Interp = struct {
                 const prev = argv.items[argv.items.len - 1];
                 const new = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ prev, t });
                 self.allocator.free(prev);
-                try argv.append(new);
+                argv.items[argv.items.len - 1] = new;
             }
 
             prevtype = token;
