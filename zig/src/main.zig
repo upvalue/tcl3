@@ -78,6 +78,9 @@ pub fn main() !void {
     var i: tcl.Interp = try tcl.Interp.init(alloc);
     defer {
         i.deinit();
+        if (arenaAlloc) |a| {
+            a.deinit();
+        }
     }
 
     i.trace_parser = parser_trace;
@@ -100,8 +103,4 @@ pub fn main() !void {
     }
 
     if (repl) {}
-
-    if (arenaAlloc) |a| {
-        a.deinit();
-    }
 }

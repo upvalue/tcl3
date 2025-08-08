@@ -23,7 +23,7 @@ else
 fi
 
 cd ../zig
-if zig build; then
+if zig build --release=fast; then
     echo "[ZIG] SUCCESS"
     zig_status="SUCCESS"
 else
@@ -32,4 +32,4 @@ else
 fi
 
 cd ..
-echo "Build summary: CPP=$cpp_status PICOL=$picol_status"
+echo "Build summary: CPP=$cpp_status PICOL=$picol_status ZIG=$zig_status"
