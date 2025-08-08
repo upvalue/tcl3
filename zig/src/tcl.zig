@@ -1,6 +1,20 @@
 const std = @import("std");
 const print = std.debug.print;
 
+// The Zig version
+
+// There aren't many explanatory comments in this one because it's structured
+// the same as the C++ version and most code is fairly similar.
+
+// Here's a couple things that might be interesting to poke at though:
+
+// - Zig has nicer features for unwinding the stack, but now there's a disjoint
+// error/status union that is returned from a lot of things. Maybe there's a better
+// way to combine those so you're not combining try and then if branches?
+// As well "converting" zig stdlib errors
+
+// - Memory management code feels a little janky, maybe it can be simplified
+
 pub const Error = error{
     General,
     Arity,
@@ -308,6 +322,55 @@ fn cmd_puts(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status 
     return Status.OK;
 }
 
+fn cmd_continue(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+    _ = try check_arity(i, "continue", argv, 1, 1);
+    return Status.CONTINUE;
+}
+
+fn cmd_break(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+    _ = try check_arity(i, "break", argv, 1, 1);
+    return Status.BREAK;
+}
+
+fn cmd_while(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+    _ = try check_arity(i, "while", argv, 3, 3);
+
+    const cond = argv.items[1];
+    const body = argv.items[2];
+
+    while (true) {
+        var res = i.eval(cond) catch {
+            return error.General;
+        };
+
+        if (res != Status.OK) {
+            return res;
+        }
+
+        const val = std.fmt.parseInt(i64, i.result.?, 10) catch {
+            return error.General;
+        };
+
+        if (val == 0) {
+            return Status.OK;
+        }
+
+        res = i.eval(body) catch {
+            return error.General;
+        };
+
+        if (res == Status.CONTINUE or res == Status.OK) {
+            continue;
+        } else if (res == Status.BREAK) {
+            break;
+        } else {
+            return res;
+        }
+    }
+
+    return Status.OK;
+}
+
 fn cmd_if(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
     _ = try check_arity(i, "if", argv, 3, 5);
 
@@ -359,9 +422,9 @@ fn cmd_math(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status 
     } else if (cmd[0] == '/') {
         c = @divFloor(a, b);
     } else if (cmd[0] == '>') {
-        c = @intFromBool(if (cmd.len > 1) a > b else a >= b);
+        c = @intFromBool(if (cmd.len > 1) a >= b else a > b);
     } else if (cmd[0] == '<') {
-        c = @intFromBool(if (cmd.len > 1) a < b else a <= b);
+        c = @intFromBool(if (cmd.len > 1) a <= b else a < b);
     } else if (cmd[0] == '=' and cmd[1] == '=') {
         c = @intFromBool(a == b);
     } else if (cmd[0] == '!' and cmd[1] == '=') {
@@ -482,6 +545,9 @@ pub const Interp = struct {
 
         // Branching and flow control
         _ = try self.register_command("if", cmd_if, null);
+        _ = try self.register_command("while", cmd_while, null);
+        _ = try self.register_command("break", cmd_break, null);
+        _ = try self.register_command("continue", cmd_continue, null);
 
         // Math commands
         _ = try self.register_command("+", cmd_math, null);
@@ -538,7 +604,10 @@ pub const Interp = struct {
 
                 if (argv.items.len > 0) {
                     if (self.get_command(argv.items[0])) |c| {
-                        _ = try c.cmd_func(self, argv, c.privdata);
+                        const res = try c.cmd_func(self, argv, c.privdata);
+                        if (res != Status.OK) {
+                            return res;
+                        }
                     } else {
                         try self.set_result_fmt("command not found: '{s}'", .{argv.items[0]});
                         return error.CommandNotFound;

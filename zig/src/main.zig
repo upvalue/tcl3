@@ -23,7 +23,6 @@ pub fn exec(i: *tcl.Interp, str: []u8, parser_only: bool) !void {
 
         while (p.next() != tcl.Token.EOF) {}
     } else {
-        std.debug.print("eval `{s}`\n", .{str});
         _ = i.eval(str) catch {
             std.debug.print("error: {?s}\n", .{i.result});
         };
