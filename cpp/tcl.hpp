@@ -693,12 +693,10 @@ struct Interp {
         }
         t = result;
       } else if (token == TK_SEP) {
-        prevtype = token;
         continue;
       } else if (token == TK_EOL) {
         // Once we hit EOL, we should have a command to evaluate
         Cmd *c;
-        prevtype = token;
 
         // Look up the command; if we find one,
         // call it with the value otherwise

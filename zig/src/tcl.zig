@@ -9,12 +9,6 @@ const stdio = std.io.getStdOut().writer();
 // There aren't many explanatory comments in this one because it's structured
 // the same as the C++ version and most code is fairly similar.
 
-// Here's a couple things that might be interesting to poke at though:
-
-// - Zig has nicer features for unwinding the stack, but now there's a disjoint
-// error/status union that is returned from a lot of things. Maybe there's a better
-// way to combine those so you're not combining try and then if branches?
-
 // - Memory management code feels a little janky, maybe it can be simplified
 
 pub const TclError = error{
@@ -649,9 +643,7 @@ pub const Interp = struct {
         };
 
         while (true) {
-            var prevtype = p.token;
-            defer prevtype = p.token;
-
+            const prevtype = p.token;
             const token = p.next();
             var t = p.token_body();
 
