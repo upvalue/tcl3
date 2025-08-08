@@ -650,6 +650,8 @@ pub const Interp = struct {
 
         while (true) {
             var prevtype = p.token;
+            defer prevtype = p.token;
+
             const token = p.next();
             var t = p.token_body();
 
@@ -670,11 +672,9 @@ pub const Interp = struct {
                 }
                 t = self.result.?;
             } else if (token == Token.SEP) {
-                prevtype = p.token;
                 continue;
             } else if (token == Token.EOL) {
                 // Command
-                prevtype = p.token;
 
                 if (argv.items.len > 0) {
                     if (self.get_command(argv.items[0])) |c| {
@@ -707,8 +707,6 @@ pub const Interp = struct {
                 self.allocator.free(prev);
                 argv.items[argv.items.len - 1] = new;
             }
-
-            prevtype = token;
         }
 
         return Status.OK;
