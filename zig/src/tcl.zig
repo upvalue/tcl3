@@ -1,6 +1,9 @@
 const std = @import("std");
 const print = std.debug.print;
 
+const stderr = std.io.getStdErr().writer();
+const stdio = std.io.getStdOut().writer();
+
 // The Zig version
 
 // There aren't many explanatory comments in this one because it's structured
@@ -318,7 +321,7 @@ fn cmd_set(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
 fn cmd_puts(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
     _ = try check_arity(i, "puts", argv, 2, 2);
 
-    std.debug.print("{s}\n", .{argv.items[1]});
+    stdio.print("{s}\n", .{argv.items[1]}) catch return error.General;
     return Status.OK;
 }
 

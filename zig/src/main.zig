@@ -5,7 +5,7 @@ const clap = @import("clap");
 
 const help =
     \\ -h, --help Display help
-    \\ -t, --parser-trace Trace parser
+    \\ -t, --trace-parser Trace parser
     \\ -p, --parser-only Only parse, don't evaluate
     \\ -r, --repl Open REPL
     \\ --allocator-arena Use ArenaAllocator
@@ -52,7 +52,7 @@ pub fn main() !void {
     defer res.deinit();
 
     const repl = false;
-    const parser_trace = res.args.@"parser-trace" != 0;
+    const parser_trace = res.args.@"trace-parser" != 0;
     const parser_only = res.args.@"parser-only" != 0;
     var alloc = gpaalloc.allocator();
     var arenaAlloc: ?std.heap.ArenaAllocator = null;
