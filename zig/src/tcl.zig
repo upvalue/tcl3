@@ -248,16 +248,30 @@ pub const Parser = struct {
     }
 };
 
-pub const CmdFunc = fn (*Interp, std.ArrayList([]u8), ?*anyopaque) Error!Status;
+pub const Privdata = struct {
+    data: *anyopaque,
+    finalizer: *const fn (std.mem.Allocator, *anyopaque) void,
+};
+
+pub const ProcPrivdata = struct {
+    args: []u8,
+    body: []u8,
+};
+
+pub const CmdFunc = fn (*Interp, std.ArrayList([]u8), ?*Privdata) Error!Status;
 
 pub const Cmd = struct {
     name: []u8,
     cmd_func: *const CmdFunc,
     string: ?*[]u8 = null,
-    privdata: ?*anyopaque = null,
+    privdata: ?*Privdata = null,
 
     pub fn deinit(self: *const Cmd, allocator: std.mem.Allocator) void {
         allocator.free(self.name);
+        if (self.privdata) |pd| {
+            pd.finalizer(allocator, pd.data);
+            allocator.destroy(pd);
+        }
     }
 };
 
@@ -308,7 +322,7 @@ fn check_arity(interp: *Interp, name: []const u8, argv: std.ArrayList([]u8), min
     return Status.OK;
 }
 
-fn cmd_set(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+fn cmd_set(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "set", argv, 3, 3);
 
     const name = argv.items[1];
@@ -318,24 +332,24 @@ fn cmd_set(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
     return Status.OK;
 }
 
-fn cmd_puts(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+fn cmd_puts(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "puts", argv, 2, 2);
 
     stdio.print("{s}\n", .{argv.items[1]}) catch return error.General;
     return Status.OK;
 }
 
-fn cmd_continue(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+fn cmd_continue(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "continue", argv, 1, 1);
     return Status.CONTINUE;
 }
 
-fn cmd_break(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+fn cmd_break(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "break", argv, 1, 1);
     return Status.BREAK;
 }
 
-fn cmd_while(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+fn cmd_while(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "while", argv, 3, 3);
 
     const cond = argv.items[1];
@@ -374,7 +388,24 @@ fn cmd_while(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status
     return Status.OK;
 }
 
-fn cmd_if(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+fn cmd_proc(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
+    _ = try check_arity(i, "proc", argv, 4, 4);
+
+    const alist = i.allocator.dupe(u8, argv.items[2]) catch return error.General;
+    const body = i.allocator.dupe(u8, argv.items[3]) catch return error.General;
+
+    // Allocate proc on heap
+    const ppd = i.allocator.create(ProcPrivdata) catch return error.General;
+    ppd.* = ProcPrivdata{ .args = alist, .body = body };
+    const pd = i.allocator.create(Privdata) catch return error.General;
+    pd.* = Privdata{ .data = ppd, .finalizer = proc_finalizer };
+
+    _ = try i.register_command(argv.items[1], call_proc, pd);
+
+    return Status.OK;
+}
+
+fn cmd_if(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "if", argv, 3, 5);
 
     const cond = argv.items[1];
@@ -401,7 +432,7 @@ fn cmd_if(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
     return Status.OK;
 }
 
-fn cmd_math(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+fn cmd_math(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "math", argv, 3, 3);
 
     const a = std.fmt.parseInt(i64, argv.items[1], 10) catch {
@@ -439,35 +470,42 @@ fn cmd_math(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status 
     return Status.OK;
 }
 
-fn call_proc(i: *Interp, argv: std.ArrayList([]u8), privdata: ?*anyopaque) Error!Status {
-    const pd = privdata;
+fn proc_finalizer(allocator: std.mem.Allocator, data: *anyopaque) void {
+    const pdp: *ProcPrivdata = @alignCast(@ptrCast(data));
+    allocator.free(pdp.args);
+    allocator.free(pdp.body);
+    allocator.destroy(pdp);
+}
+
+fn call_proc(i: *Interp, argv: std.ArrayList([]u8), privdata: ?*Privdata) Error!Status {
+    const ppd: *ProcPrivdata = @alignCast(@ptrCast(privdata.?.data));
     const cf = CallFrame.init(i.allocator);
     i.callframes.append(cf) catch return error.General;
     defer i.drop_call_frame();
 
-    const arity = 0;
-    const alist = pd.args;
-    const body = pd.body;
+    var arity: u64 = 0;
+    const alist = ppd.args;
+    const body = ppd.body;
 
-    var j = 0;
-    var start = 0;
+    var j: usize = 0;
+    var start: usize = 0;
 
-    while (j < alist.size()) {
-        while (j < alist.size() and alist.at(j) == ' ') {
+    while (j < alist.len) {
+        while (j < alist.len and alist[j] == ' ') {
             j += 1;
         }
 
         start = j;
 
-        while (j < alist.size() and alist.at(j) != ' ') {
+        while (j < alist.len and alist[j] != ' ') {
             j += 1;
         }
 
-        i.set_var(alist.substr(start, j - start), argv[arity + 1]) catch return error.General;
+        i.set_var(alist[start..j], argv.items[arity + 1]) catch return error.General;
 
         arity += 1;
 
-        if (j >= alist.size()) {
+        if (j >= alist.len) {
             break;
         }
     }
@@ -479,13 +517,11 @@ fn call_proc(i: *Interp, argv: std.ArrayList([]u8), privdata: ?*anyopaque) Error
         return error.Arity;
     }
 
-    status = try i.eval(*body);
+    status = try i.eval(body);
 
     if (status == Status.RETURN) {
         status = Status.OK;
     }
-
-    i.drop_call_frame();
 
     return status;
 }
@@ -567,7 +603,7 @@ pub const Interp = struct {
 
     pub fn drop_call_frame(self: *Interp) void {
         const cf = self.callframes.pop();
-        cf.deinit(self.allocator);
+        cf.?.deinit(self.allocator);
     }
 
     ///// COMMANDS
@@ -582,7 +618,7 @@ pub const Interp = struct {
         return null;
     }
 
-    pub fn register_command(self: *Interp, name: []const u8, cmd_func: *const CmdFunc, privdata: ?*anyopaque) Error!Status {
+    pub fn register_command(self: *Interp, name: []const u8, cmd_func: *const CmdFunc, privdata: ?*Privdata) Error!Status {
         if (self.get_command(name)) |_| {
             self.set_result_fmt("command already defined: '{s}'", .{name}) catch {};
             return error.CommandAlreadyDefined;
@@ -594,8 +630,8 @@ pub const Interp = struct {
 
     pub fn register_core_commands(self: *Interp) !void {
         _ = try self.register_command("set", cmd_set, null);
-
         _ = try self.register_command("puts", cmd_puts, null);
+        _ = try self.register_command("proc", cmd_proc, null);
 
         // Branching and flow control
         _ = try self.register_command("if", cmd_if, null);
