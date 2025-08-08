@@ -439,6 +439,57 @@ fn cmd_math(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status 
     return Status.OK;
 }
 
+fn call_proc(i: *Interp, argv: std.ArrayList([]u8), privdata: ?*anyopaque) Error!Status {
+    const pd = privdata;
+    const cf = CallFrame.init(i.allocator);
+    i.callframes.append(cf) catch return error.General;
+    defer i.drop_call_frame();
+
+    const arity = 0;
+    const alist = pd.args;
+    const body = pd.body;
+
+    var j = 0;
+    var start = 0;
+
+    while (j < alist.size()) {
+        while (j < alist.size() and alist.at(j) == ' ') {
+            j += 1;
+        }
+
+        start = j;
+
+        while (j < alist.size() and alist.at(j) != ' ') {
+            j += 1;
+        }
+
+        i.set_var(alist.substr(start, j - start), argv[arity + 1]) catch return error.General;
+
+        arity += 1;
+
+        if (j >= alist.size()) {
+            break;
+        }
+    }
+
+    var status = Status.OK;
+
+    if (arity != argv.items.len - 1) {
+        i.set_result_fmt("wrong number of arguments for {s}: expected {d}, got {d}", .{ argv.items[0], arity, argv.items.len - 1 }) catch return error.General;
+        return error.Arity;
+    }
+
+    status = try i.eval(*body);
+
+    if (status == Status.RETURN) {
+        status = Status.OK;
+    }
+
+    i.drop_call_frame();
+
+    return status;
+}
+
 pub const Interp = struct {
     commands: std.ArrayList(Cmd),
     callframes: std.ArrayList(CallFrame),
