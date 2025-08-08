@@ -276,7 +276,6 @@ pub const CallFrame = struct {
     }
 
     pub fn deinit(self: *const CallFrame, allocator: std.mem.Allocator) void {
-        std.debug.print("deiniting callframe\n", .{});
         for (self.vars.items) |v| v.deinit(allocator);
         self.vars.deinit();
     }
@@ -292,7 +291,7 @@ fn check_arity(interp: *Interp, name: []const u8, argv: std.ArrayList([]u8), min
     return Status.OK;
 }
 
-fn tcl_set(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+fn cmd_set(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
     _ = try check_arity(i, "set", argv, 3, 3);
 
     const name = argv.items[1];
@@ -302,10 +301,75 @@ fn tcl_set(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
     return Status.OK;
 }
 
-fn tcl_puts(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+fn cmd_puts(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
     _ = try check_arity(i, "puts", argv, 2, 2);
 
     std.debug.print("{s}\n", .{argv.items[1]});
+    return Status.OK;
+}
+
+fn cmd_if(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+    _ = try check_arity(i, "if", argv, 3, 5);
+
+    const cond = argv.items[1];
+    const thenb = argv.items[2];
+    const elseb = if (argv.items.len == 5) argv.items[4] else null;
+
+    const res = i.eval(cond) catch {
+        return error.General;
+    };
+
+    if (res != Status.OK) {
+        return res;
+    }
+
+    const val = std.fmt.parseInt(i64, i.result.?, 10) catch {
+        return error.General;
+    };
+
+    if (val != 0) {
+        return i.eval(thenb);
+    } else if (elseb != null) {
+        return i.eval(elseb.?);
+    }
+    return Status.OK;
+}
+
+fn cmd_math(i: *Interp, argv: std.ArrayList([]u8), _: ?*anyopaque) Error!Status {
+    _ = try check_arity(i, "math", argv, 3, 3);
+
+    const a = std.fmt.parseInt(i64, argv.items[1], 10) catch {
+        return error.General;
+    };
+
+    const b = std.fmt.parseInt(i64, argv.items[2], 10) catch {
+        return error.General;
+    };
+
+    const cmd = argv.items[0];
+
+    var c: i64 = 0;
+
+    if (cmd[0] == '+') {
+        c = a + b;
+    } else if (cmd[0] == '-') {
+        c = a - b;
+    } else if (cmd[0] == '*') {
+        c = a * b;
+    } else if (cmd[0] == '/') {
+        c = @divFloor(a, b);
+    } else if (cmd[0] == '>') {
+        c = @intFromBool(if (cmd.len > 1) a > b else a >= b);
+    } else if (cmd[0] == '<') {
+        c = @intFromBool(if (cmd.len > 1) a < b else a <= b);
+    } else if (cmd[0] == '=' and cmd[1] == '=') {
+        c = @intFromBool(a == b);
+    } else if (cmd[0] == '!' and cmd[1] == '=') {
+        c = @intFromBool(a != b);
+    }
+
+    try i.set_result_fmt("{d}", .{c});
+
     return Status.OK;
 }
 
@@ -363,7 +427,7 @@ pub const Interp = struct {
         self.result = result;
     }
 
-    ///// CALL FRAMES
+    ///// CALL FRAMES AND VARIABLES
     pub fn get_var(self: *Interp, name: []const u8) ?*Var {
         const cf = &self.callframes.items[self.callframes.items.len - 1];
         for (cf.vars.items, 0..) |v, i| {
@@ -382,6 +446,11 @@ pub const Interp = struct {
             const variable = Var.init(self.allocator, name, value) catch return error.General;
             cf.vars.append(variable) catch return error.General;
         }
+    }
+
+    pub fn drop_call_frame(self: *Interp) void {
+        const cf = self.callframes.pop();
+        cf.deinit(self.allocator);
     }
 
     ///// COMMANDS
@@ -407,11 +476,27 @@ pub const Interp = struct {
     }
 
     pub fn register_core_commands(self: *Interp) !void {
-        _ = try self.register_command("puts", tcl_puts, null);
-        _ = try self.register_command("set", tcl_set, null);
+        _ = try self.register_command("set", cmd_set, null);
+
+        _ = try self.register_command("puts", cmd_puts, null);
+
+        // Branching and flow control
+        _ = try self.register_command("if", cmd_if, null);
+
+        // Math commands
+        _ = try self.register_command("+", cmd_math, null);
+        _ = try self.register_command("-", cmd_math, null);
+        _ = try self.register_command("*", cmd_math, null);
+        _ = try self.register_command("/", cmd_math, null);
+        _ = try self.register_command(">", cmd_math, null);
+        _ = try self.register_command("<", cmd_math, null);
+        _ = try self.register_command("==", cmd_math, null);
+        _ = try self.register_command("!=", cmd_math, null);
+        _ = try self.register_command(">=", cmd_math, null);
+        _ = try self.register_command("<=", cmd_math, null);
     }
 
-    pub fn eval(self: *Interp, str: []u8) !Status {
+    pub fn eval(self: *Interp, str: []u8) Error!Status {
         var argv = std.ArrayList([]u8).init(self.allocator);
         defer argv.deinit();
         defer for (argv.items) |a| {
@@ -438,6 +523,12 @@ pub const Interp = struct {
                     try self.set_result_fmt("variable not found: '{s}'", .{t});
                     return error.VariableNotFound;
                 }
+            } else if (token == Token.CMD) {
+                const ret = try self.eval(t);
+                if (ret != Status.OK) {
+                    return ret;
+                }
+                t = self.result.?;
             } else if (token == Token.SEP) {
                 prevtype = p.token;
                 continue;
@@ -465,9 +556,13 @@ pub const Interp = struct {
             if (prevtype == Token.SEP or prevtype == Token.EOL) {
                 // dup string
                 const duped = self.allocator.dupe(u8, t) catch return error.General;
-                try argv.append(duped);
+                argv.append(duped) catch return error.General;
             } else {
                 // append to prev token
+                const prev = argv.items[argv.items.len - 1];
+                const new = std.fmt.allocPrint(self.allocator, "{s}{s}", .{ prev, t }) catch return error.General;
+                self.allocator.free(prev);
+                argv.append(new) catch return error.General;
             }
 
             prevtype = token;
