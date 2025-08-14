@@ -1,4 +1,3 @@
-# tcl-in-4-langs
+# tcl3
 
-An experiment in re-implementing TCL (Picol) in different systems programming
-languages.
+An experiment in implementing a Tcl interpreter in C++, Rust, and Zig
