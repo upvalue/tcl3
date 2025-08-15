@@ -279,8 +279,6 @@ pub mod tcl {
             tk
         }
 
-        // pub fn register_command(&mut self, name: &str, cmd: &str) -> Result<(), String> {
-
         pub fn set_trace(&mut self, trace: bool) {
             self.trace = trace;
         }
@@ -303,6 +301,35 @@ pub mod tcl {
         }
     }
 
+    struct Var {
+        name: String,
+        value: String,
+    }
+
+    struct CallFrame {
+        vars: Vec<Var>,
+    }
+
+    impl CallFrame {
+        pub fn new() -> CallFrame {
+            CallFrame { vars: Vec::new() }
+        }
+
+        pub fn set_var(&mut self, name: &str, value: &str) -> Result<Status, TclError> {
+            for var in self.vars.iter_mut() {
+                if var.name == name {
+                    var.value = value.to_string();
+                    return Ok(Status::OK);
+                }
+            }
+            self.vars.push(Var {
+                name: name.to_string(),
+                value: value.to_string(),
+            });
+            Ok(Status::OK)
+        }
+    }
+
     pub struct Cmd {
         name: String,
         cmd_func: fn(&mut Interp, &Vec<String>) -> Result<Status, TclError>,
@@ -311,7 +338,8 @@ pub mod tcl {
 
     pub struct Interp {
         commands: Vec<Cmd>,
-        result: Option<String>,
+        callframes: Vec<CallFrame>,
+        pub result: Option<String>,
     }
 
     fn check_arity(
@@ -340,12 +368,37 @@ pub mod tcl {
         Ok(Status::OK)
     }
 
+    fn cmd_set(interp: &mut Interp, argv: &Vec<String>) -> Result<Status, TclError> {
+        check_arity(interp, argv, 3, 3)?;
+        interp.set_var(&argv[1], &argv[2])?;
+        Ok(Status::OK)
+    }
+
     impl Interp {
         pub fn new() -> Interp {
-            Interp {
+            let mut interp = Interp {
                 commands: Vec::new(),
+                callframes: Vec::new(),
                 result: None,
+            };
+            interp.callframes.push(CallFrame::new());
+            interp
+        }
+
+        pub fn set_var(&mut self, name: &str, value: &str) -> Result<Status, TclError> {
+            let callframe = self.callframes.last_mut().unwrap();
+            callframe.set_var(name, value)?;
+            Ok(Status::OK)
+        }
+
+        pub fn get_var(&self, name: &str) -> Option<&Var> {
+            let callframe = self.callframes.last().unwrap();
+            for var in callframe.vars.iter() {
+                if var.name == name {
+                    return Some(var);
+                }
             }
+            None
         }
 
         pub fn get_command(&self, name: &str) -> Option<&Cmd> {
@@ -375,6 +428,7 @@ pub mod tcl {
 
         pub fn register_core_commands(&mut self) {
             let _ = self.register_command("puts", cmd_puts);
+            let _ = self.register_command("set", cmd_set);
         }
 
         pub fn eval(&mut self, str: &str) -> Result<Status, TclError> {
@@ -382,13 +436,21 @@ pub mod tcl {
             let mut p = Parser::new(str);
 
             let mut argv: Vec<String> = Vec::new();
-            while !p.done() {
+            loop {
                 let prevtype = p.token;
                 let token = p.next();
-                let t = p.token_body();
+                let mut t = p.token_body();
 
                 if token == Token::EOF {
                     break;
+                } else if token == Token::VAR {
+                    let var = self.get_var(&t);
+                    if var.is_some() {
+                        t = &var.unwrap().value;
+                    } else {
+                        self.result = Some(format!("variable not found: '{name}'", name = t));
+                        return Err(TclError::VariableNotFound);
+                    }
                 } else if token == Token::SEP {
                     continue;
                 } else if token == Token::EOL {
@@ -398,7 +460,7 @@ pub mod tcl {
                         let cmd = self.get_command(cmd_name);
                         if cmd.is_some() {
                             let res = (cmd.unwrap().cmd_func)(self, &argv);
-                            if res.is_ok() && res.ok().unwrap() != Status::OK {
+                            if (res.is_ok() && res.ok().unwrap() != Status::OK) || res.is_err() {
                                 return res;
                             }
                         } else {
@@ -409,6 +471,7 @@ pub mod tcl {
                             return Err(TclError::CommandNotFound);
                         }
                     }
+                    argv.clear();
 
                     continue;
                 }

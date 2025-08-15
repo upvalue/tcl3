@@ -67,9 +67,15 @@ fn main() {
 
     let res = i.eval(&contents);
 
+    let strres = i.result;
+
     if res.is_ok() {
         println!("Result: {:?}", res.ok().unwrap());
     } else {
         eprintln!("Error: {:?}", res.err().unwrap());
+    }
+
+    if strres.is_some() {
+        println!("Result: {:?}", strres.unwrap());
     }
 }
