@@ -5,7 +5,8 @@
 {"type": "TK_STR", "begin": 17, "end": 17, "body": ""}
 {"type": "TK_SEP", "begin": 18, "end": 19, "body": " "}
 {"type": "TK_STR", "begin": 20, "end": 34, "body": "\n  puts hello\n"}
-{"type": "TK_EOL", "begin": 35, "end": 37, "body": "\n\n"}
+{"type": "TK_EOL", "begin": 35, "end": 36, "body": "\n"}
+{"type": "TK_EOL", "begin": 36, "end": 37, "body": "\n"}
 {"type": "TK_ESC", "begin": 37, "end": 47, "body": "hello_proc"}
 {"type": "TK_EOL", "begin": 47, "end": 48, "body": "\n"}
 {"type": "TK_EOL", "begin": 0, "end": 3, "body": "\n  "}

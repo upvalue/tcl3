@@ -85,7 +85,8 @@
 {"type": "TK_ESC", "begin": 5, "end": 6, "body": "2"}
 {"type": "TK_EOL", "begin": 5, "end": 6, "body": "2"}
 {"type": "TK_EOF", "begin": 5, "end": 6, "body": "2"}
-{"type": "TK_EOL", "begin": 109, "end": 111, "body": "\n\n"}
+{"type": "TK_EOL", "begin": 109, "end": 110, "body": "\n"}
+{"type": "TK_EOL", "begin": 110, "end": 111, "body": "\n"}
 {"type": "TK_ESC", "begin": 111, "end": 115, "body": "puts"}
 {"type": "TK_SEP", "begin": 115, "end": 116, "body": " "}
 {"type": "TK_CMD", "begin": 117, "end": 122, "body": "+ 2 2"}

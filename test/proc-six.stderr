@@ -5,7 +5,8 @@
 {"type": "TK_STR", "begin": 10, "end": 10, "body": ""}
 {"type": "TK_SEP", "begin": 11, "end": 12, "body": " "}
 {"type": "TK_STR", "begin": 13, "end": 22, "body": "\n  + 1 5\n"}
-{"type": "TK_EOL", "begin": 23, "end": 25, "body": "\n\n"}
+{"type": "TK_EOL", "begin": 23, "end": 24, "body": "\n"}
+{"type": "TK_EOL", "begin": 24, "end": 25, "body": "\n"}
 {"type": "TK_ESC", "begin": 25, "end": 29, "body": "puts"}
 {"type": "TK_SEP", "begin": 29, "end": 30, "body": " "}
 {"type": "TK_CMD", "begin": 31, "end": 34, "body": "six"}

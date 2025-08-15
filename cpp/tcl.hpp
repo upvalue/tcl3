@@ -131,15 +131,18 @@ struct Parser {
   /**
    * Consumes all whitespace until EOF or non-whitespace character
    */
-  void consume_whitespace() {
+  bool consume_whitespace_check_eol() {
     while (!done()) {
       char c = peek();
-      if (c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == ';') {
+      if (c == '\n') {
+        return true;
+      } else if (c == ' ' || c == '\r' || c == '\t' || c == ';') {
         getc();
       } else {
         break;
       }
     }
+    return false;
   }
 
   void recurse(Parser &sub, char terminating_char) {
@@ -170,6 +173,7 @@ struct Parser {
       adj = 0;
       char c = getc();
       if (terminating_char && c == terminating_char) {
+        end = cursor;
         return TK_EOF;
       }
       switch (c) {
@@ -278,7 +282,9 @@ struct Parser {
         }
         token = (c == '\n' || c == ';') ? TK_EOL : TK_SEP;
         // Eagerly consume all further whitespace
-        consume_whitespace();
+        if (consume_whitespace_check_eol()) {
+          token = TK_EOL;
+        }
         goto finish;
       default: {
         if (!in_quote && !in_brace) {

@@ -3,7 +3,7 @@
 {"type": "TK_STR", "begin": 7, "end": 13, "body": "== 1 1"}
 {"type": "TK_SEP", "begin": 14, "end": 15, "body": " "}
 {"type": "TK_STR", "begin": 16, "end": 36, "body": "\n  break\n  puts bad\n"}
-{"type": "TK_EOL", "begin": 37, "end": 39, "body": "\n\n"}
+{"type": "TK_EOL", "begin": 37, "end": 38, "body": "\n"}
 {"type": "TK_ESC", "begin": 0, "end": 2, "body": "=="}
 {"type": "TK_SEP", "begin": 2, "end": 3, "body": " "}
 {"type": "TK_ESC", "begin": 3, "end": 4, "body": "1"}
@@ -14,6 +14,7 @@
 {"type": "TK_EOL", "begin": 0, "end": 3, "body": "\n  "}
 {"type": "TK_ESC", "begin": 3, "end": 8, "body": "break"}
 {"type": "TK_EOL", "begin": 8, "end": 11, "body": "\n  "}
+{"type": "TK_EOL", "begin": 38, "end": 39, "body": "\n"}
 {"type": "TK_ESC", "begin": 39, "end": 43, "body": "puts"}
 {"type": "TK_SEP", "begin": 43, "end": 44, "body": " "}
 {"type": "TK_ESC", "begin": 44, "end": 46, "body": "42"}

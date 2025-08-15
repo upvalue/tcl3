@@ -79,15 +79,18 @@ pub const Parser = struct {
         return p.body[p.begin..p.end];
     }
 
-    pub fn consume_whitespace(p: *Parser) void {
+    pub fn consume_whitespace_check_eol(p: *Parser) bool {
         while (!p.done()) {
             const c = p.peek();
-            if (c == ' ' or c == '\n' or c == '\r' or c == '\t' or c == ';') {
+            if (c == '\n') {
+                return true;
+            } else if (c == ' ' or c == '\r' or c == '\t' or c == ';') {
                 _ = p.getc();
             } else {
-                return;
+                break;
             }
         }
+        return false;
     }
 
     pub fn recurse(p: *Parser, sub: *Parser, terminating_char: u8) void {
@@ -208,7 +211,9 @@ pub const Parser = struct {
                     }
 
                     p.token = if (c == '\n' or c == ';') Token.EOL else Token.SEP;
-                    p.consume_whitespace();
+                    if (p.consume_whitespace_check_eol()) {
+                        p.token = Token.EOL;
+                    }
                     break;
                 },
                 else => {

@@ -19,7 +19,7 @@
 {"type": "TK_ESC", "begin": 3, "end": 7, "body": "puts"}
 {"type": "TK_SEP", "begin": 7, "end": 8, "body": " "}
 {"type": "TK_ESC", "begin": 8, "end": 10, "body": "42"}
-{"type": "TK_SEP", "begin": 10, "end": 12, "body": " \n"}
-{"type": "TK_EOL", "begin": 10, "end": 12, "body": " \n"}
-{"type": "TK_EOF", "begin": 10, "end": 12, "body": " \n"}
+{"type": "TK_EOL", "begin": 10, "end": 11, "body": " "}
+{"type": "TK_EOL", "begin": 11, "end": 12, "body": "\n"}
+{"type": "TK_EOF", "begin": 11, "end": 12, "body": "\n"}
 {"type": "TK_EOF", "begin": 46, "end": 47, "body": "\n"}

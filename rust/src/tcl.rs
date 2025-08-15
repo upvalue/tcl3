@@ -77,11 +77,11 @@ pub mod tcl {
         }
 
         pub fn done(&mut self) -> bool {
-            return self.cursor >= self.body.len();
+            return self.cursor >= self.body.as_bytes().len();
         }
 
         pub fn peek(&mut self) -> u8 {
-            return self.body.chars().nth(self.cursor).unwrap_or('\0') as u8;
+            return self.body.as_bytes()[self.cursor];
         }
 
         pub fn getc(&mut self) -> u8 {
@@ -94,15 +94,19 @@ pub mod tcl {
             self.cursor -= 1;
         }
 
-        pub fn consume_whitespace(&mut self) {
+        pub fn consume_whitespace_check_eol(&mut self) -> bool {
             while !self.done() {
                 let c = self.peek();
-                if c == b' ' || c == b'\n' || c == b'\r' || c == b'\t' || c == b';' {
+                if c == b'\n' {
+                    self.getc();
+                    return true;
+                } else if c == b' ' || c == b'\r' || c == b'\t' || c == b';' {
                     self.getc();
                 } else {
                     break;
                 }
             }
+            return false;
         }
 
         pub fn recurse(&mut self, sub: &mut Parser, terminating_char: u8) {
@@ -123,7 +127,6 @@ pub mod tcl {
 
             self.token = Token::ESC;
             self.begin = self.cursor;
-            self.end = self.cursor;
 
             let mut c: u8;
             let mut adj: usize = 0;
@@ -134,6 +137,7 @@ pub mod tcl {
                 c = self.getc();
 
                 if c == self.terminating_char {
+                    self.end = self.cursor - 1;
                     return Token::EOF;
                 }
 
@@ -184,11 +188,9 @@ pub mod tcl {
                             continue;
                         }
 
-                        if self.in_quote {
-                            if self.cursor != self.begin + 1 {
-                                self.back();
-                                break;
-                            }
+                        if self.in_quote && self.cursor != self.begin + 1 {
+                            self.back();
+                            break;
                         }
 
                         self.begin += 1;
@@ -243,7 +245,9 @@ pub mod tcl {
                             Token::SEP
                         };
 
-                        self.consume_whitespace();
+                        if self.consume_whitespace_check_eol() {
+                            self.token = Token::EOL;
+                        }
                         break;
                     }
                     _ => {
@@ -359,7 +363,7 @@ pub mod tcl {
     ) -> Result<Status, TclError> {
         check_arity(interp, argv, 2, 2)?;
 
-        println!("{}\n", argv[1]);
+        println!("{}", argv[1]);
         Ok(Status::OK)
     }
 
@@ -389,43 +393,54 @@ pub mod tcl {
         let cf = CallFrame::new();
         interp.callframes.push(cf);
 
-        // Parse the argument list
-        let mut arg_parser = Parser::new(&ppd.args);
-        let mut expected_args = Vec::new();
+        let alist = &ppd.args;
 
-        while arg_parser.next() != Token::EOF {
-            if arg_parser.token == Token::STR || arg_parser.token == Token::ESC {
-                expected_args.push(arg_parser.token_body().to_string());
+        let mut start: usize = 0;
+        let mut j: usize = 0;
+        let mut arity: usize = 0;
+
+        while j < alist.len() {
+            while j < alist.len() && alist.as_bytes()[j] == b' ' {
+                j += 1;
+            }
+
+            start = j;
+
+            while j < alist.len() && alist.as_bytes()[j] != b' ' {
+                j += 1;
+            }
+
+            interp.set_var(&alist[start..j], &argv[arity + 1])?;
+
+            arity += 1;
+
+            if j >= alist.len() {
+                break;
             }
         }
 
-        // Check arity (argv[0] is the proc name)
-        if argv.len() - 1 != expected_args.len() {
+        if arity != argv.len() - 1 {
             interp.result = Some(format!(
-                "wrong number of arguments to {}: expected {}, got {}",
+                "wrong number of arguments for {}: expected {arity}, got {}",
                 argv[0],
-                expected_args.len(),
                 argv.len() - 1
             ));
-            interp.callframes.pop();
             return Err(TclError::Arity);
         }
 
-        // Bind arguments to local variables
-        for (i, arg_name) in expected_args.iter().enumerate() {
-            interp.set_var(arg_name, &argv[i + 1])?;
-        }
+        let mut status;
 
-        // Execute the proc body
-        let result = interp.eval(&ppd.body);
+        status = interp.eval(&ppd.body)?;
 
         // Clean up call frame
+        // TODO: This needs to be done under all circumstances.
         interp.callframes.pop();
 
-        match result {
-            Ok(Status::RETURN) => Ok(Status::OK),
-            other => other,
+        if status == Status::RETURN {
+            status = Status::OK;
         }
+
+        Ok(status)
     }
 
     fn cmd_proc(
@@ -516,7 +531,7 @@ pub mod tcl {
             Ok(Status::OK)
         }
 
-        pub fn get_var(&self, name: &str) -> Option<&Var> {
+        fn get_var(&self, name: &str) -> Option<&Var> {
             let callframe = self.callframes.last().unwrap();
             for var in callframe.vars.iter() {
                 if var.name == name {
@@ -553,11 +568,19 @@ pub mod tcl {
         }
 
         pub fn register_core_commands(&mut self) {
+            // Basics
             let _ = self.register_command("puts", cmd_puts, None);
             let _ = self.register_command("set", cmd_set, None);
+
+            // Procs and flow control
             let _ = self.register_command("proc", cmd_proc, None);
             let _ = self.register_command("return", cmd_return, None);
+            // TODO if
+            // TODO while
+            // TODO continue
+            // TODO break
 
+            // Math
             let _ = self.register_command("+", cmd_math, None);
             let _ = self.register_command("-", cmd_math, None);
             let _ = self.register_command("*", cmd_math, None);
@@ -599,9 +622,9 @@ pub mod tcl {
                 } else if token == Token::SEP {
                     continue;
                 } else if token == Token::EOL {
+                    println!("encountered eol with argv: '{:?}'", argv);
                     if !argv.is_empty() {
                         let cmd_name = &argv[0];
-                        println!("cmd_name: '{cmd_name}'", cmd_name = cmd_name);
                         let cmd = self.get_command(cmd_name);
                         if let Some(cmd) = cmd {
                             let privdata_clone = cmd.privdata.as_ref().map(|p| Rc::clone(p));

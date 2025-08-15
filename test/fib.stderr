@@ -5,7 +5,8 @@
 {"type": "TK_STR", "begin": 10, "end": 11, "body": "x"}
 {"type": "TK_SEP", "begin": 12, "end": 13, "body": " "}
 {"type": "TK_STR", "begin": 14, "end": 110, "body": "\n    if {<= $x 1} {\n        return 1\n    } else {\n        + [fib [- $x 1]] [fib [- $x 2]]\n    }\n"}
-{"type": "TK_EOL", "begin": 111, "end": 113, "body": "\n\n"}
+{"type": "TK_EOL", "begin": 111, "end": 112, "body": "\n"}
+{"type": "TK_EOL", "begin": 112, "end": 113, "body": "\n"}
 {"type": "TK_ESC", "begin": 113, "end": 117, "body": "puts"}
 {"type": "TK_SEP", "begin": 117, "end": 118, "body": " "}
 {"type": "TK_CMD", "begin": 119, "end": 124, "body": "fib 5"}

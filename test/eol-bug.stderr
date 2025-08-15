@@ -1,0 +1,13 @@
+{"type": "TK_ESC", "begin": 0, "end": 3, "body": "set"}
+{"type": "TK_SEP", "begin": 3, "end": 4, "body": " "}
+{"type": "TK_ESC", "begin": 4, "end": 5, "body": "b"}
+{"type": "TK_SEP", "begin": 5, "end": 6, "body": " "}
+{"type": "TK_ESC", "begin": 6, "end": 7, "body": "5"}
+{"type": "TK_EOL", "begin": 7, "end": 8, "body": " "}
+{"type": "TK_EOL", "begin": 8, "end": 9, "body": "\n"}
+{"type": "TK_ESC", "begin": 9, "end": 13, "body": "puts"}
+{"type": "TK_SEP", "begin": 13, "end": 14, "body": " "}
+{"type": "TK_VAR", "begin": 15, "end": 16, "body": "b"}
+{"type": "TK_EOL", "begin": 16, "end": 17, "body": "\n"}
+{"type": "TK_EOL", "begin": 17, "end": 18, "body": "\n"}
+{"type": "TK_EOF", "begin": 17, "end": 18, "body": "\n"}
