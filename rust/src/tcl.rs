@@ -171,6 +171,7 @@ pub mod tcl {
 
                         let mut sub: Parser = Parser::new(&self.body[self.cursor..]);
 
+                        self.begin += 1;
                         self.recurse(&mut sub, b']');
                         adj = 1;
                         self.token = Token::CMD;
@@ -374,6 +375,46 @@ pub mod tcl {
         Ok(Status::OK)
     }
 
+    fn cmd_math(interp: &mut Interp, argv: &Vec<String>) -> Result<Status, TclError> {
+        check_arity(interp, argv, 3, 3)?;
+
+        // Hadnle errors
+        let achk = argv[1].parse::<i64>();
+        if achk.is_err() {
+            interp.result = Some(format!("invalid number: '{}'", argv[1]));
+            return Err(TclError::General);
+        }
+
+        let bchk = argv[2].parse::<i64>();
+
+        if bchk.is_err() {
+            interp.result = Some(format!("invalid number: '{}'", argv[2]));
+            return Err(TclError::General);
+        }
+
+        let a = achk.unwrap();
+        let b = bchk.unwrap();
+
+        match argv[0].as_str() {
+            "+" => interp.result = Some(format!("{}", a + b)),
+            "-" => interp.result = Some(format!("{}", a - b)),
+            "*" => interp.result = Some(format!("{}", a * b)),
+            "/" => interp.result = Some(format!("{}", a / b)),
+            ">" => interp.result = Some(format!("{}", a > b)),
+            "<" => interp.result = Some(format!("{}", a < b)),
+            "==" => interp.result = Some(format!("{}", a == b)),
+            "!=" => interp.result = Some(format!("{}", a != b)),
+            ">=" => interp.result = Some(format!("{}", a >= b)),
+            "<=" => interp.result = Some(format!("{}", a <= b)),
+            _ => {
+                interp.result = Some(format!("unknown operator: '{}'", argv[1]));
+                return Err(TclError::General);
+            }
+        }
+
+        Ok(Status::OK)
+    }
+
     impl Interp {
         pub fn new() -> Interp {
             let mut interp = Interp {
@@ -429,6 +470,17 @@ pub mod tcl {
         pub fn register_core_commands(&mut self) {
             let _ = self.register_command("puts", cmd_puts);
             let _ = self.register_command("set", cmd_set);
+
+            let _ = self.register_command("+", cmd_math);
+            let _ = self.register_command("-", cmd_math);
+            let _ = self.register_command("*", cmd_math);
+            let _ = self.register_command("/", cmd_math);
+            let _ = self.register_command(">", cmd_math);
+            let _ = self.register_command("<", cmd_math);
+            let _ = self.register_command(">=", cmd_math);
+            let _ = self.register_command("<=", cmd_math);
+            let _ = self.register_command("==", cmd_math);
+            let _ = self.register_command("!=", cmd_math);
         }
 
         pub fn eval(&mut self, str: &str) -> Result<Status, TclError> {
@@ -451,6 +503,12 @@ pub mod tcl {
                         self.result = Some(format!("variable not found: '{name}'", name = t));
                         return Err(TclError::VariableNotFound);
                     }
+                } else if token == Token::CMD {
+                    let ret = self.eval(t);
+                    if ret.is_err() || ret.unwrap() != Status::OK {
+                        return ret;
+                    }
+                    t = self.result.as_ref().unwrap();
                 } else if token == Token::SEP {
                     continue;
                 } else if token == Token::EOL {
