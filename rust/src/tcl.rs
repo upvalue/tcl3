@@ -1,5 +1,6 @@
 pub mod tcl {
     use std::any::Any;
+    use std::rc::Rc;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum Token {
@@ -285,22 +286,10 @@ pub mod tcl {
         }
     }
 
-    trait Privdata: Any {
-        fn finalize(self: Box<Self>);
-    }
-
     #[derive(Clone, Debug)]
     struct ProcPrivdata {
-        args: Box<String>,
-        body: Box<String>,
-    }
-
-    impl Privdata for ProcPrivdata {
-        fn finalize(mut self: Box<Self>) {
-            self.args.clear();
-            self.body.clear();
-            // drop(self);
-        }
+        args: String,
+        body: String,
     }
 
     struct Var {
@@ -334,9 +323,8 @@ pub mod tcl {
 
     pub struct Cmd {
         name: String,
-        cmd_func:
-            fn(&mut Interp, &Vec<String>, Option<Box<dyn Privdata>>) -> Result<Status, TclError>,
-        privdata: Option<Box<dyn Privdata>>,
+        cmd_func: fn(&mut Interp, &Vec<String>, Option<Rc<dyn Any>>) -> Result<Status, TclError>,
+        privdata: Option<Rc<dyn Any>>,
     }
 
     pub struct Interp {
@@ -367,7 +355,7 @@ pub mod tcl {
     fn cmd_puts(
         interp: &mut Interp,
         argv: &Vec<String>,
-        _privdata: Option<Box<dyn Privdata>>,
+        _privdata: Option<Rc<dyn Any>>,
     ) -> Result<Status, TclError> {
         check_arity(interp, argv, 2, 2)?;
 
@@ -378,7 +366,7 @@ pub mod tcl {
     fn cmd_set(
         interp: &mut Interp,
         argv: &Vec<String>,
-        _privdata: Option<Box<dyn Privdata>>,
+        _privdata: Option<Rc<dyn Any>>,
     ) -> Result<Status, TclError> {
         check_arity(interp, argv, 3, 3)?;
         interp.set_var(&argv[1], &argv[2])?;
@@ -388,33 +376,68 @@ pub mod tcl {
     fn call_proc(
         interp: &mut Interp,
         argv: &Vec<String>,
-        privdata: Option<Box<dyn Privdata>>,
+        privdata: Option<Rc<dyn Any>>,
     ) -> Result<Status, TclError> {
-        // check_arity(interp, argv, 0, 0)?;
+        let ppd = privdata
+            .as_ref()
+            .and_then(|p| p.downcast_ref::<ProcPrivdata>())
+            .ok_or_else(|| {
+                interp.result = Some("internal error: invalid proc privdata".to_string());
+                TclError::General
+            })?;
 
         let cf = CallFrame::new();
         interp.callframes.push(cf);
 
-        let mut arity = 0;
-        // defer interp.drop_call_frame();
+        // Parse the argument list
+        let mut arg_parser = Parser::new(&ppd.args);
+        let mut expected_args = Vec::new();
 
-        /*let ppd: *ProcPrivdata = @alignCast(@ptrCast(privdata.?.data));
-        const cf = CallFrame.init(i.allocator);
-        try i.callframes.append(cf);
-        defer i.drop_call_frame();*/
-        Ok(Status::OK)
+        while arg_parser.next() != Token::EOF {
+            if arg_parser.token == Token::STR || arg_parser.token == Token::ESC {
+                expected_args.push(arg_parser.token_body().to_string());
+            }
+        }
+
+        // Check arity (argv[0] is the proc name)
+        if argv.len() - 1 != expected_args.len() {
+            interp.result = Some(format!(
+                "wrong number of arguments to {}: expected {}, got {}",
+                argv[0],
+                expected_args.len(),
+                argv.len() - 1
+            ));
+            interp.callframes.pop();
+            return Err(TclError::Arity);
+        }
+
+        // Bind arguments to local variables
+        for (i, arg_name) in expected_args.iter().enumerate() {
+            interp.set_var(arg_name, &argv[i + 1])?;
+        }
+
+        // Execute the proc body
+        let result = interp.eval(&ppd.body);
+
+        // Clean up call frame
+        interp.callframes.pop();
+
+        match result {
+            Ok(Status::RETURN) => Ok(Status::OK),
+            other => other,
+        }
     }
 
     fn cmd_proc(
         interp: &mut Interp,
         argv: &Vec<String>,
-        _privdata: Option<Box<dyn Privdata>>,
+        _privdata: Option<Rc<dyn Any>>,
     ) -> Result<Status, TclError> {
         check_arity(interp, argv, 4, 4)?;
 
-        let ppd = Box::new(ProcPrivdata {
-            args: Box::new(argv[2].clone()),
-            body: Box::new(argv[3].clone()),
+        let ppd = Rc::new(ProcPrivdata {
+            args: argv[2].clone(),
+            body: argv[3].clone(),
         });
 
         interp.register_command(&argv[1], call_proc, Some(ppd))?;
@@ -425,9 +448,9 @@ pub mod tcl {
     fn cmd_return(
         interp: &mut Interp,
         argv: &Vec<String>,
-        _privdata: Option<Box<dyn Privdata>>,
+        _privdata: Option<Rc<dyn Any>>,
     ) -> Result<Status, TclError> {
-        check_arity(interp, argv, 1, 1)?;
+        check_arity(interp, argv, 2, 2)?;
         interp.result = Some(argv[1].clone());
         Ok(Status::RETURN)
     }
@@ -435,7 +458,7 @@ pub mod tcl {
     fn cmd_math(
         interp: &mut Interp,
         argv: &Vec<String>,
-        _privdata: Option<Box<dyn Privdata>>,
+        _privdata: Option<Rc<dyn Any>>,
     ) -> Result<Status, TclError> {
         check_arity(interp, argv, 3, 3)?;
 
@@ -510,12 +533,8 @@ pub mod tcl {
         pub fn register_command(
             &mut self,
             name: &str,
-            cmd: fn(
-                &mut Interp,
-                &Vec<String>,
-                Option<Box<dyn Privdata>>,
-            ) -> Result<Status, TclError>,
-            privdata: Option<Box<dyn Privdata>>,
+            cmd: fn(&mut Interp, &Vec<String>, Option<Rc<dyn Any>>) -> Result<Status, TclError>,
+            privdata: Option<Rc<dyn Any>>,
         ) -> Result<Status, TclError> {
             if self.get_command(name).is_some() {
                 self.result = Some(format!("command already defined: '{name}'", name = name));
@@ -584,9 +603,9 @@ pub mod tcl {
                         let cmd_name = &argv[0];
                         println!("cmd_name: '{cmd_name}'", cmd_name = cmd_name);
                         let cmd = self.get_command(cmd_name);
-                        if cmd.is_some() {
-                            let res =
-                                (cmd.unwrap().cmd_func)(self, &argv, cmd.unwrap().privdata.clone());
+                        if let Some(cmd) = cmd {
+                            let privdata_clone = cmd.privdata.as_ref().map(|p| Rc::clone(p));
+                            let res = (cmd.cmd_func)(self, &argv, privdata_clone);
                             if (res.is_ok() && res.ok().unwrap() != Status::OK) || res.is_err() {
                                 return res;
                             }
