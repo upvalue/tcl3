@@ -1,7 +1,6 @@
 const std = @import("std");
 const print = std.debug.print;
 
-const stderr = std.io.getStdErr().writer();
 const stdio = std.io.getStdOut().writer();
 
 // The Zig version

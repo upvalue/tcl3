@@ -12,6 +12,9 @@ pub mod tcl {
 
     #[derive(Clone)]
     pub struct Parser<'a> {
+        // Because we want to keep the parser to zero allocations, we need to
+        // declare a lifetime for it. The parser won't be allowed to outlive the
+        // string. This also makes it possible to safely give sub-strings to sub-parsers.
         body: &'a str,
 
         cursor: usize,
@@ -108,9 +111,13 @@ pub mod tcl {
 
                 c = self.getc();
 
+                if c == self.terminating_char {
+                    return Token::EOF;
+                }
+
                 match c {
                     b'{' => {
-                        if self.in_quote || self.in_brace {
+                        if self.in_quote || self.in_string {
                             continue;
                         }
 
@@ -123,7 +130,7 @@ pub mod tcl {
                         self.brace_level += 1;
                     }
                     b'}' => {
-                        if self.in_quote || self.in_brace {
+                        if self.in_quote || self.in_string {
                             continue;
                         }
 
@@ -141,16 +148,16 @@ pub mod tcl {
                             continue;
                         }
 
-                        let mut sub: Parser = self.clone();
-                        sub.body = &self.body[self.cursor..];
+                        let mut sub: Parser = Parser::new(&self.body[self.cursor..]);
 
                         self.recurse(&mut sub, b']');
                         adj = 1;
                         self.token = Token::CMD;
+                        break;
                     }
 
                     b'$' => {
-                        if self.in_string {
+                        if self.in_string || self.in_brace {
                             continue;
                         }
 
@@ -167,6 +174,10 @@ pub mod tcl {
                     }
 
                     b'#' => {
+                        if self.in_string || self.in_quote || self.in_brace {
+                            continue;
+                        }
+
                         while !self.done() {
                             if self.getc() == b'\n' {
                                 break;
@@ -210,7 +221,7 @@ pub mod tcl {
                         };
 
                         self.consume_whitespace();
-                        return self.token;
+                        break;
                     }
                     _ => {
                         if !self.in_brace && !self.in_quote {
@@ -233,14 +244,22 @@ pub mod tcl {
             let tk = self.next_impl();
 
             if self.trace {
+                let begin = self.begin;
+                let end = self.end;
                 eprintln!(
-                    "{{\"token\": \"TK_{:?}\", \"body\": \"{}\"}}",
+                    "{{\"token\": \"TK_{:?}\", \"begin\": {}, \"end\": {}, \"body\": {:?}}}",
                     tk,
+                    begin,
+                    end,
                     self.token_body()
                 );
             }
 
             tk
+        }
+
+        pub fn set_trace(&mut self, trace: bool) {
+            self.trace = trace;
         }
     }
 }

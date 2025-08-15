@@ -7,6 +7,7 @@ cd cpp
 if make; then
     echo "[CPP] SUCCESS"
     cpp_status="SUCCESS"
+    echo "c++ interpreter available at ./cpp/repl"
 else
     echo "[CPP] FAIL"
     cpp_status="FAIL"
@@ -17,6 +18,7 @@ cd ../picol
 if make; then
     echo "[PICOL] SUCCESS"
     picol_status="SUCCESS"
+    echo "picol available at ./picol/picol"
 else
     echo "[PICOL] FAIL"
     picol_status="FAIL"
@@ -29,6 +31,7 @@ if zig build --release=fast; then
 else
     echo "[ZIG] FAIL"
     zig_status="FAIL"
+    echo "zig interpreter available at ./zig/zig-out/bin/tcl"
 fi
 
 cd ..
