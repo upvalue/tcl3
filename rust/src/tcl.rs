@@ -29,6 +29,7 @@ pub mod tcl {
         CommandNotFound,
         CommandAlreadyDefined,
         VariableNotFound,
+        InvalidNumber,
     }
 
     pub struct Parser<'a> {
@@ -443,6 +444,45 @@ pub mod tcl {
         Ok(status)
     }
 
+    fn cmd_if(
+        interp: &mut Interp,
+        argv: &Vec<String>,
+        _privdata: Option<Rc<dyn Any>>,
+    ) -> Result<Status, TclError> {
+        check_arity(interp, argv, 3, 5)?;
+
+        let cond = &argv[1];
+        let thenb = &argv[2];
+        let elseb: Option<&String> = if argv.len() == 5 {
+            Some(&argv[4])
+        } else {
+            None
+        };
+
+        let res = interp.eval(cond);
+
+        if res.is_err() || res.unwrap() != Status::OK {
+            return res;
+        }
+
+        let val = interp.result.as_ref().unwrap().parse::<i64>();
+
+        if val.is_err() {
+            interp.result = Some(format!("invalid number: '{}'", cond));
+            return Err(TclError::InvalidNumber);
+        }
+
+        let val = val.unwrap();
+
+        if val != 0 {
+            return interp.eval(thenb);
+        } else if elseb.is_some() {
+            return interp.eval(elseb.unwrap());
+        }
+
+        Ok(Status::OK)
+    }
+
     fn cmd_proc(
         interp: &mut Interp,
         argv: &Vec<String>,
@@ -499,12 +539,12 @@ pub mod tcl {
             "-" => interp.result = Some(format!("{}", a - b)),
             "*" => interp.result = Some(format!("{}", a * b)),
             "/" => interp.result = Some(format!("{}", a / b)),
-            ">" => interp.result = Some(format!("{}", a > b)),
-            "<" => interp.result = Some(format!("{}", a < b)),
-            "==" => interp.result = Some(format!("{}", a == b)),
-            "!=" => interp.result = Some(format!("{}", a != b)),
-            ">=" => interp.result = Some(format!("{}", a >= b)),
-            "<=" => interp.result = Some(format!("{}", a <= b)),
+            ">" => interp.result = Some(format!("{}", (a > b) as i64)),
+            "<" => interp.result = Some(format!("{}", (a < b) as i64)),
+            "==" => interp.result = Some(format!("{}", (a == b) as i64)),
+            "!=" => interp.result = Some(format!("{}", (a != b) as i64)),
+            ">=" => interp.result = Some(format!("{}", (a >= b) as i64)),
+            "<=" => interp.result = Some(format!("{}", (a <= b) as i64)),
             _ => {
                 interp.result = Some(format!("unknown operator: '{}'", argv[1]));
                 return Err(TclError::General);
@@ -575,7 +615,7 @@ pub mod tcl {
             // Procs and flow control
             let _ = self.register_command("proc", cmd_proc, None);
             let _ = self.register_command("return", cmd_return, None);
-            // TODO if
+            let _ = self.register_command("if", cmd_if, None);
             // TODO while
             // TODO continue
             // TODO break
@@ -622,7 +662,6 @@ pub mod tcl {
                 } else if token == Token::SEP {
                     continue;
                 } else if token == Token::EOL {
-                    println!("encountered eol with argv: '{:?}'", argv);
                     if !argv.is_empty() {
                         let cmd_name = &argv[0];
                         let cmd = self.get_command(cmd_name);
