@@ -10,8 +10,9 @@ pub mod tcl {
         EOF,
     }
 
-    pub struct Parser {
-        body: String,
+    #[derive(Clone)]
+    pub struct Parser<'a> {
+        body: &'a str,
 
         cursor: usize,
         begin: usize,
@@ -20,16 +21,16 @@ pub mod tcl {
 
         in_string: bool,
         in_quote: bool,
-        in_command: bool,
         in_brace: bool,
 
+        terminating_char: u8,
         brace_level: usize,
 
         trace: bool,
     }
 
-    impl Parser {
-        pub fn new(body: String) -> Parser {
+    impl<'a> Parser<'a> {
+        pub fn new(body: &'a str) -> Parser<'a> {
             Parser {
                 body,
 
@@ -41,35 +42,34 @@ pub mod tcl {
 
                 in_string: false,
                 in_quote: false,
-                in_command: false,
                 in_brace: false,
 
+                terminating_char: 0,
                 brace_level: 0,
 
                 trace: true,
             }
         }
 
-        pub fn done(self: &mut Parser) -> bool {
-            println!("done: {}", self.cursor >= self.body.len());
+        pub fn done(&mut self) -> bool {
             return self.cursor >= self.body.len();
         }
 
-        pub fn peek(self: &mut Parser) -> u8 {
+        pub fn peek(&mut self) -> u8 {
             return self.body.chars().nth(self.cursor).unwrap_or('\0') as u8;
         }
 
-        pub fn getc(self: &mut Parser) -> u8 {
+        pub fn getc(&mut self) -> u8 {
             let c = self.peek();
             self.cursor += 1;
             return c;
         }
 
-        pub fn back(self: &mut Parser) {
+        pub fn back(&mut self) {
             self.cursor -= 1;
         }
 
-        pub fn consume_whitespace(self: &mut Parser) {
+        pub fn consume_whitespace(&mut self) {
             while !self.done() {
                 let c = self.peek();
                 if c == b' ' || c == b'\n' || c == b'\r' || c == b'\t' || c == b';' {
@@ -80,15 +80,13 @@ pub mod tcl {
             }
         }
 
-        /*
-        pub fn recurse(self: &mut Parser, sub: &mut Parser, terminating_char: u8) {
+        pub fn recurse(&mut self, sub: &mut Parser, terminating_char: u8) {
             sub.terminating_char = terminating_char;
             while sub.next() != Token::EOF {}
             self.cursor = self.cursor + sub.cursor;
         }
-        */
 
-        pub fn next_impl(self: &mut Parser) -> Token {
+        pub fn next_impl(&mut self) -> Token {
             if self.done() {
                 if self.token != Token::EOF && self.token != Token::EOL {
                     self.token = Token::EOL;
@@ -102,7 +100,7 @@ pub mod tcl {
             self.begin = self.cursor;
             self.end = self.cursor;
 
-            let mut c: u8 = 0;
+            let mut c: u8;
             let mut adj: usize = 0;
 
             while !self.done() {
@@ -111,6 +109,46 @@ pub mod tcl {
                 c = self.getc();
 
                 match c {
+                    b'{' => {
+                        if self.in_quote || self.in_brace {
+                            continue;
+                        }
+
+                        if !self.in_brace {
+                            self.begin += 1;
+                            self.token = Token::STR;
+                            self.in_brace = true;
+                        }
+
+                        self.brace_level += 1;
+                    }
+                    b'}' => {
+                        if self.in_quote || self.in_brace {
+                            continue;
+                        }
+
+                        if self.brace_level > 0 {
+                            self.brace_level -= 1;
+                            if self.brace_level == 0 {
+                                self.in_brace = false;
+                                adj = 1;
+                                break;
+                            }
+                        }
+                    }
+                    b'[' => {
+                        if self.in_string || self.in_quote || self.in_brace {
+                            continue;
+                        }
+
+                        let mut sub: Parser = self.clone();
+                        sub.body = &self.body[self.cursor..];
+
+                        self.recurse(&mut sub, b']');
+                        adj = 1;
+                        self.token = Token::CMD;
+                    }
+
                     b'$' => {
                         if self.in_string {
                             continue;
@@ -187,11 +225,11 @@ pub mod tcl {
             self.token
         }
 
-        pub fn token_body(self: &mut Parser) -> &str {
+        pub fn token_body(&mut self) -> &str {
             return &self.body[self.begin..self.end];
         }
 
-        pub fn next(self: &mut Parser) -> Token {
+        pub fn next(&mut self) -> Token {
             let tk = self.next_impl();
 
             if self.trace {

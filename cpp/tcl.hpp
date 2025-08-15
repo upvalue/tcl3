@@ -116,7 +116,6 @@ struct Parser {
   bool in_string = false;
   bool in_brace = false;
   bool in_quote = false;
-  bool in_command = false;
 
   size_t brace_level = 0;
   Token token = TK_EOL;

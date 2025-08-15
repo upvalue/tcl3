@@ -53,7 +53,6 @@ pub const Parser = struct {
     in_string: bool = false,
     in_brace: bool = false,
     in_quote: bool = false,
-    in_command: bool = false,
 
     brace_level: usize = 0,
     token: Token = Token.EOL,
