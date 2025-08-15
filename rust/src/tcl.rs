@@ -1,4 +1,6 @@
 pub mod tcl {
+    use std::any::Any;
+
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum Token {
         ESC,
@@ -10,11 +12,30 @@ pub mod tcl {
         EOF,
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum Status {
+        OK,
+        ERROR,
+        BREAK,
+        CONTINUE,
+        RETURN,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum TclError {
+        General,
+        Arity,
+        CommandNotFound,
+        CommandAlreadyDefined,
+        VariableNotFound,
+    }
+
     pub struct Parser<'a> {
         // Because we want to keep the parser to zero allocations, we need to
-        // declare a lifetime for it. The parser won't be allowed to outlive the
-        // string. This also makes it possible to safely give sub-strings to sub-parsers.
+        // declare a lifetime here so we can simply take a reference to a string
+        // instead of having our own heap-allocated string.  The parser won't be
+        // allowed to outlive the string. This also makes it possible to safely
+        // give sub-strings to sub-parsers.
         body: &'a str,
 
         cursor: usize,
@@ -258,8 +279,153 @@ pub mod tcl {
             tk
         }
 
+        // pub fn register_command(&mut self, name: &str, cmd: &str) -> Result<(), String> {
+
         pub fn set_trace(&mut self, trace: bool) {
             self.trace = trace;
+        }
+    }
+
+    trait Privdata: Any {
+        fn finalize(self: Box<Self>);
+    }
+
+    struct ProcPrivdata {
+        args: Box<Vec<String>>,
+        body: Box<String>,
+    }
+
+    impl Privdata for ProcPrivdata {
+        fn finalize(mut self: Box<Self>) {
+            self.args.clear();
+            self.body.clear();
+            // drop(self);
+        }
+    }
+
+    pub struct Cmd {
+        name: String,
+        cmd_func: fn(&mut Interp, &Vec<String>) -> Result<Status, TclError>,
+        privdata: Option<Box<dyn Privdata>>,
+    }
+
+    pub struct Interp {
+        commands: Vec<Cmd>,
+        result: Option<String>,
+    }
+
+    fn check_arity(
+        interp: &mut Interp,
+        argv: &Vec<String>,
+        min: usize,
+        max: usize,
+    ) -> Result<Status, TclError> {
+        if argv.len() < min || argv.len() > max {
+            interp.result = Some(format!(
+                "wrong number of arguments to {name}: expected {min}-{max}, got {len}",
+                name = argv[0],
+                min = min,
+                max = max,
+                len = argv.len()
+            ));
+            return Err(TclError::Arity);
+        }
+        Ok(Status::OK)
+    }
+
+    fn cmd_puts(interp: &mut Interp, argv: &Vec<String>) -> Result<Status, TclError> {
+        check_arity(interp, argv, 2, 2)?;
+
+        println!("{}\n", argv[1]);
+        Ok(Status::OK)
+    }
+
+    impl Interp {
+        pub fn new() -> Interp {
+            Interp {
+                commands: Vec::new(),
+                result: None,
+            }
+        }
+
+        pub fn get_command(&self, name: &str) -> Option<&Cmd> {
+            self.commands.iter().find(|c| c.name == name)
+        }
+
+        pub fn register_command(
+            &mut self,
+            name: &str,
+            cmd: fn(&mut Interp, &Vec<String>) -> Result<Status, TclError>,
+        ) -> Result<Status, TclError> {
+            if self.get_command(name).is_some() {
+                self.result = Some(format!("command already defined: '{name}'", name = name));
+                return Err(TclError::CommandAlreadyDefined);
+            }
+
+            let cmd = Cmd {
+                name: name.to_string(),
+                cmd_func: cmd,
+                privdata: None,
+            };
+
+            self.commands.push(cmd);
+
+            Ok(Status::OK)
+        }
+
+        pub fn register_core_commands(&mut self) {
+            let _ = self.register_command("puts", cmd_puts);
+        }
+
+        pub fn eval(&mut self, str: &str) -> Result<Status, TclError> {
+            // TODO do the rest of this thing
+            let mut p = Parser::new(str);
+
+            let mut argv: Vec<String> = Vec::new();
+            while !p.done() {
+                let prevtype = p.token;
+                let token = p.next();
+                let t = p.token_body();
+
+                if token == Token::EOF {
+                    break;
+                } else if token == Token::SEP {
+                    continue;
+                } else if token == Token::EOL {
+                    if !argv.is_empty() {
+                        let cmd_name = &argv[0];
+                        println!("cmd_name: '{cmd_name}'", cmd_name = cmd_name);
+                        let cmd = self.get_command(cmd_name);
+                        if cmd.is_some() {
+                            let res = (cmd.unwrap().cmd_func)(self, &argv);
+                            if res.is_ok() && res.ok().unwrap() != Status::OK {
+                                return res;
+                            }
+                        } else {
+                            self.result = Some(format!(
+                                "command not found: '{cmd_name}'",
+                                cmd_name = cmd_name
+                            ));
+                            return Err(TclError::CommandNotFound);
+                        }
+                    }
+
+                    continue;
+                }
+
+                if prevtype == Token::SEP || prevtype == Token::EOL {
+                    // dup string
+                    let duped = t.to_string();
+                    argv.push(duped);
+                } else {
+                    // append to prev token
+                    let prev = argv.last().unwrap();
+                    let new = format!("{}{}", prev, t);
+                    argv.pop();
+                    argv.push(new);
+                }
+            }
+            Ok(Status::OK)
         }
     }
 }

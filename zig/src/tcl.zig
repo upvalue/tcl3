@@ -248,7 +248,6 @@ pub const CmdFunc = fn (*Interp, std.ArrayList([]u8), ?*Privdata) Error!Status;
 pub const Cmd = struct {
     name: []u8,
     cmd_func: *const CmdFunc,
-    string: ?*[]u8 = null,
     privdata: ?*Privdata = null,
 
     pub fn deinit(self: *const Cmd, allocator: std.mem.Allocator) void {

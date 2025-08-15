@@ -51,7 +51,7 @@ fn main() {
         std::process::exit(1);
     });
 
-    let mut p = Parser::new(&contents);
+    /*let mut p = Parser::new(&contents);
 
     p.set_trace(trace_enabled);
 
@@ -60,5 +60,16 @@ fn main() {
     }
 
     // One final EOF
-    p.next();
+    p.next();*/
+
+    let mut i = Interp::new();
+    i.register_core_commands();
+
+    let res = i.eval(&contents);
+
+    if res.is_ok() {
+        println!("Result: {:?}", res.ok().unwrap());
+    } else {
+        eprintln!("Error: {:?}", res.err().unwrap());
+    }
 }
