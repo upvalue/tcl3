@@ -289,8 +289,9 @@ pub mod tcl {
         fn finalize(self: Box<Self>);
     }
 
+    #[derive(Clone, Debug)]
     struct ProcPrivdata {
-        args: Box<Vec<String>>,
+        args: Box<String>,
         body: Box<String>,
     }
 
@@ -333,7 +334,8 @@ pub mod tcl {
 
     pub struct Cmd {
         name: String,
-        cmd_func: fn(&mut Interp, &Vec<String>) -> Result<Status, TclError>,
+        cmd_func:
+            fn(&mut Interp, &Vec<String>, Option<Box<dyn Privdata>>) -> Result<Status, TclError>,
         privdata: Option<Box<dyn Privdata>>,
     }
 
@@ -362,20 +364,79 @@ pub mod tcl {
         Ok(Status::OK)
     }
 
-    fn cmd_puts(interp: &mut Interp, argv: &Vec<String>) -> Result<Status, TclError> {
+    fn cmd_puts(
+        interp: &mut Interp,
+        argv: &Vec<String>,
+        _privdata: Option<Box<dyn Privdata>>,
+    ) -> Result<Status, TclError> {
         check_arity(interp, argv, 2, 2)?;
 
         println!("{}\n", argv[1]);
         Ok(Status::OK)
     }
 
-    fn cmd_set(interp: &mut Interp, argv: &Vec<String>) -> Result<Status, TclError> {
+    fn cmd_set(
+        interp: &mut Interp,
+        argv: &Vec<String>,
+        _privdata: Option<Box<dyn Privdata>>,
+    ) -> Result<Status, TclError> {
         check_arity(interp, argv, 3, 3)?;
         interp.set_var(&argv[1], &argv[2])?;
         Ok(Status::OK)
     }
 
-    fn cmd_math(interp: &mut Interp, argv: &Vec<String>) -> Result<Status, TclError> {
+    fn call_proc(
+        interp: &mut Interp,
+        argv: &Vec<String>,
+        privdata: Option<Box<dyn Privdata>>,
+    ) -> Result<Status, TclError> {
+        // check_arity(interp, argv, 0, 0)?;
+
+        let cf = CallFrame::new();
+        interp.callframes.push(cf);
+
+        let mut arity = 0;
+        // defer interp.drop_call_frame();
+
+        /*let ppd: *ProcPrivdata = @alignCast(@ptrCast(privdata.?.data));
+        const cf = CallFrame.init(i.allocator);
+        try i.callframes.append(cf);
+        defer i.drop_call_frame();*/
+        Ok(Status::OK)
+    }
+
+    fn cmd_proc(
+        interp: &mut Interp,
+        argv: &Vec<String>,
+        _privdata: Option<Box<dyn Privdata>>,
+    ) -> Result<Status, TclError> {
+        check_arity(interp, argv, 4, 4)?;
+
+        let ppd = Box::new(ProcPrivdata {
+            args: Box::new(argv[2].clone()),
+            body: Box::new(argv[3].clone()),
+        });
+
+        interp.register_command(&argv[1], call_proc, Some(ppd))?;
+
+        Ok(Status::OK)
+    }
+
+    fn cmd_return(
+        interp: &mut Interp,
+        argv: &Vec<String>,
+        _privdata: Option<Box<dyn Privdata>>,
+    ) -> Result<Status, TclError> {
+        check_arity(interp, argv, 1, 1)?;
+        interp.result = Some(argv[1].clone());
+        Ok(Status::RETURN)
+    }
+
+    fn cmd_math(
+        interp: &mut Interp,
+        argv: &Vec<String>,
+        _privdata: Option<Box<dyn Privdata>>,
+    ) -> Result<Status, TclError> {
         check_arity(interp, argv, 3, 3)?;
 
         // Hadnle errors
@@ -449,7 +510,12 @@ pub mod tcl {
         pub fn register_command(
             &mut self,
             name: &str,
-            cmd: fn(&mut Interp, &Vec<String>) -> Result<Status, TclError>,
+            cmd: fn(
+                &mut Interp,
+                &Vec<String>,
+                Option<Box<dyn Privdata>>,
+            ) -> Result<Status, TclError>,
+            privdata: Option<Box<dyn Privdata>>,
         ) -> Result<Status, TclError> {
             if self.get_command(name).is_some() {
                 self.result = Some(format!("command already defined: '{name}'", name = name));
@@ -459,7 +525,7 @@ pub mod tcl {
             let cmd = Cmd {
                 name: name.to_string(),
                 cmd_func: cmd,
-                privdata: None,
+                privdata: privdata,
             };
 
             self.commands.push(cmd);
@@ -468,19 +534,21 @@ pub mod tcl {
         }
 
         pub fn register_core_commands(&mut self) {
-            let _ = self.register_command("puts", cmd_puts);
-            let _ = self.register_command("set", cmd_set);
+            let _ = self.register_command("puts", cmd_puts, None);
+            let _ = self.register_command("set", cmd_set, None);
+            let _ = self.register_command("proc", cmd_proc, None);
+            let _ = self.register_command("return", cmd_return, None);
 
-            let _ = self.register_command("+", cmd_math);
-            let _ = self.register_command("-", cmd_math);
-            let _ = self.register_command("*", cmd_math);
-            let _ = self.register_command("/", cmd_math);
-            let _ = self.register_command(">", cmd_math);
-            let _ = self.register_command("<", cmd_math);
-            let _ = self.register_command(">=", cmd_math);
-            let _ = self.register_command("<=", cmd_math);
-            let _ = self.register_command("==", cmd_math);
-            let _ = self.register_command("!=", cmd_math);
+            let _ = self.register_command("+", cmd_math, None);
+            let _ = self.register_command("-", cmd_math, None);
+            let _ = self.register_command("*", cmd_math, None);
+            let _ = self.register_command("/", cmd_math, None);
+            let _ = self.register_command(">", cmd_math, None);
+            let _ = self.register_command("<", cmd_math, None);
+            let _ = self.register_command(">=", cmd_math, None);
+            let _ = self.register_command("<=", cmd_math, None);
+            let _ = self.register_command("==", cmd_math, None);
+            let _ = self.register_command("!=", cmd_math, None);
         }
 
         pub fn eval(&mut self, str: &str) -> Result<Status, TclError> {
@@ -517,7 +585,8 @@ pub mod tcl {
                         println!("cmd_name: '{cmd_name}'", cmd_name = cmd_name);
                         let cmd = self.get_command(cmd_name);
                         if cmd.is_some() {
-                            let res = (cmd.unwrap().cmd_func)(self, &argv);
+                            let res =
+                                (cmd.unwrap().cmd_func)(self, &argv, cmd.unwrap().privdata.clone());
                             if (res.is_ok() && res.ok().unwrap() != Status::OK) || res.is_err() {
                                 return res;
                             }
