@@ -500,6 +500,65 @@ pub mod tcl {
         Ok(Status::OK)
     }
 
+    fn cmd_while(
+        interp: &mut Interp,
+        argv: &Vec<String>,
+        _privdata: Option<Rc<dyn Any>>,
+    ) -> Result<Status, TclError> {
+        check_arity(interp, argv, 3, 3)?;
+
+        let cond = &argv[1];
+        let body = &argv[2];
+
+        loop {
+            let res = interp.eval(cond)?;
+
+            if res != Status::OK {
+                return Ok(res);
+            }
+
+            let val = interp.result.as_ref().unwrap().parse::<i64>();
+
+            if val.is_err() {
+                interp.result = Some(format!("invalid number: '{}'", cond));
+                return Err(TclError::InvalidNumber);
+            }
+
+            if val.unwrap() == 0 {
+                return Ok(Status::OK);
+            }
+
+            let res2 = interp.eval(body)?;
+
+            if res2 == Status::CONTINUE || res2 == Status::OK {
+                continue;
+            } else if res2 == Status::BREAK {
+                break;
+            } else {
+                return Ok(res2);
+            }
+        }
+        return Ok(Status::OK);
+    }
+
+    fn cmd_continue(
+        interp: &mut Interp,
+        argv: &Vec<String>,
+        _privdata: Option<Rc<dyn Any>>,
+    ) -> Result<Status, TclError> {
+        check_arity(interp, argv, 1, 1)?;
+        Ok(Status::CONTINUE)
+    }
+
+    fn cmd_break(
+        interp: &mut Interp,
+        argv: &Vec<String>,
+        _privdata: Option<Rc<dyn Any>>,
+    ) -> Result<Status, TclError> {
+        check_arity(interp, argv, 1, 1)?;
+        Ok(Status::BREAK)
+    }
+
     fn cmd_return(
         interp: &mut Interp,
         argv: &Vec<String>,
@@ -616,9 +675,9 @@ pub mod tcl {
             let _ = self.register_command("proc", cmd_proc, None);
             let _ = self.register_command("return", cmd_return, None);
             let _ = self.register_command("if", cmd_if, None);
-            // TODO while
-            // TODO continue
-            // TODO break
+            let _ = self.register_command("continue", cmd_continue, None);
+            let _ = self.register_command("break", cmd_break, None);
+            let _ = self.register_command("while", cmd_while, None);
 
             // Math
             let _ = self.register_command("+", cmd_math, None);
