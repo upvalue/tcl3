@@ -34,5 +34,14 @@ else
     echo "zig interpreter available at ./zig/zig-out/bin/tcl"
 fi
 
+cd ../rust
+if cargo build --release; then
+    echo "[RUST] SUCCESS"
+    rust_status="SUCCESS"
+else
+    echo "[RUST] FAIL"
+    rust_status="FAIL"
+    echo "rust interpreter available at ./rust/target/release/tcl"
+
 cd ..
 echo "Build summary: CPP=$cpp_status PICOL=$picol_status ZIG=$zig_status"

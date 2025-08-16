@@ -16,10 +16,9 @@ pub mod tcl {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum Status {
         OK,
-        ERROR,
+        RETURN,
         BREAK,
         CONTINUE,
-        RETURN,
     }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -73,7 +72,7 @@ pub mod tcl {
                 terminating_char: 0,
                 brace_level: 0,
 
-                trace: true,
+                trace: false,
             }
         }
 
@@ -275,7 +274,7 @@ pub mod tcl {
                 let begin = self.begin;
                 let end = self.end;
                 eprintln!(
-                    "{{\"token\": \"TK_{:?}\", \"begin\": {}, \"end\": {}, \"body\": {:?}}}",
+                    "{{\"type\": \"TK_{:?}\", \"begin\": {}, \"end\": {}, \"body\": {:?}}}",
                     tk,
                     begin,
                     end,
@@ -284,10 +283,6 @@ pub mod tcl {
             }
 
             tk
-        }
-
-        pub fn set_trace(&mut self, trace: bool) {
-            self.trace = trace;
         }
     }
 
@@ -336,6 +331,7 @@ pub mod tcl {
         commands: Vec<Cmd>,
         callframes: Vec<CallFrame>,
         pub result: Option<String>,
+        pub trace_parser: bool,
     }
 
     fn check_arity(
@@ -619,6 +615,7 @@ pub mod tcl {
                 commands: Vec::new(),
                 callframes: Vec::new(),
                 result: None,
+                trace_parser: false,
             };
             interp.callframes.push(CallFrame::new());
             interp
@@ -695,6 +692,7 @@ pub mod tcl {
         pub fn eval(&mut self, str: &str) -> Result<Status, TclError> {
             // TODO do the rest of this thing
             let mut p = Parser::new(str);
+            p.trace = self.trace_parser;
 
             let mut argv: Vec<String> = Vec::new();
             loop {
