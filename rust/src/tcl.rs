@@ -98,7 +98,6 @@ pub mod tcl {
             while !self.done() {
                 let c = self.peek();
                 if c == b'\n' {
-                    self.getc();
                     return true;
                 } else if c == b' ' || c == b'\r' || c == b'\t' || c == b';' {
                     self.getc();
@@ -111,7 +110,12 @@ pub mod tcl {
 
         pub fn recurse(&mut self, sub: &mut Parser, terminating_char: u8) {
             sub.terminating_char = terminating_char;
-            while sub.next() != Token::EOF {}
+            loop {
+                let tk = sub.next();
+                if tk == Token::EOF {
+                    break;
+                }
+            }
             self.cursor = self.cursor + sub.cursor;
         }
 
