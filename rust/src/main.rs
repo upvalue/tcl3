@@ -36,7 +36,7 @@ fn main() {
 
     for file in args.files {
         let contents = std::fs::read_to_string(&file).unwrap_or_else(|e| {
-            eprintln!("Error reading file: {}", e);
+            eprintln!("Error reading file: {e}");
             std::process::exit(1);
         });
 

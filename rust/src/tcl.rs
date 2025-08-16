@@ -5,21 +5,21 @@ pub mod tcl {
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum Token {
-        ESC,
-        STR,
-        CMD,
-        VAR,
-        SEP,
-        EOL,
-        EOF,
+        Esc,
+        Str,
+        Cmd,
+        Var,
+        Sep,
+        Eol,
+        Eof,
     }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum Status {
-        OK,
-        RETURN,
-        BREAK,
-        CONTINUE,
+        Ok,
+        Return,
+        Break,
+        Continue,
     }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,7 +64,7 @@ pub mod tcl {
                 begin: 0,
                 end: 0,
 
-                token: Token::EOL,
+                token: Token::Eol,
 
                 in_string: false,
                 in_quote: false,
@@ -78,17 +78,17 @@ pub mod tcl {
         }
 
         pub fn done(&mut self) -> bool {
-            return self.cursor >= self.body.as_bytes().len();
+            self.cursor >= self.body.len()
         }
 
         pub fn peek(&mut self) -> u8 {
-            return self.body.as_bytes()[self.cursor];
+            self.body.as_bytes()[self.cursor]
         }
 
         pub fn getc(&mut self) -> u8 {
             let c = self.peek();
             self.cursor += 1;
-            return c;
+            c
         }
 
         pub fn back(&mut self) {
@@ -106,31 +106,31 @@ pub mod tcl {
                     break;
                 }
             }
-            return false;
+            false
         }
 
         pub fn recurse(&mut self, sub: &mut Parser, terminating_char: u8) {
             sub.terminating_char = terminating_char;
             loop {
                 let tk = sub.next();
-                if tk == Token::EOF {
+                if tk == Token::Eof {
                     break;
                 }
             }
-            self.cursor = self.cursor + sub.cursor;
+            self.cursor += sub.cursor;
         }
 
         pub fn next_impl(&mut self) -> Token {
             if self.done() {
-                if self.token != Token::EOF && self.token != Token::EOL {
-                    self.token = Token::EOL;
+                if self.token != Token::Eof && self.token != Token::Eol {
+                    self.token = Token::Eol;
                 } else {
-                    self.token = Token::EOF;
+                    self.token = Token::Eof;
                 }
                 return self.token;
             }
 
-            self.token = Token::ESC;
+            self.token = Token::Esc;
             self.begin = self.cursor;
 
             let mut c: u8;
@@ -143,7 +143,7 @@ pub mod tcl {
 
                 if c == self.terminating_char {
                     self.end = self.cursor - 1;
-                    return Token::EOF;
+                    return Token::Eof;
                 }
 
                 match c {
@@ -154,7 +154,7 @@ pub mod tcl {
 
                         if !self.in_brace {
                             self.begin += 1;
-                            self.token = Token::STR;
+                            self.token = Token::Str;
                             self.in_brace = true;
                         }
 
@@ -184,7 +184,7 @@ pub mod tcl {
                         self.begin += 1;
                         self.recurse(&mut sub, b']');
                         adj = 1;
-                        self.token = Token::CMD;
+                        self.token = Token::Cmd;
                         break;
                     }
 
@@ -199,7 +199,7 @@ pub mod tcl {
                         }
 
                         self.begin += 1;
-                        self.token = Token::VAR;
+                        self.token = Token::Var;
                         self.in_string = true;
                     }
 
@@ -245,13 +245,13 @@ pub mod tcl {
                         }
 
                         self.token = if c == b'\n' || c == b';' {
-                            Token::EOL
+                            Token::Eol
                         } else {
-                            Token::SEP
+                            Token::Sep
                         };
 
                         if self.consume_whitespace_check_eol() {
-                            self.token = Token::EOL;
+                            self.token = Token::Eol;
                         }
                         break;
                     }
@@ -269,7 +269,7 @@ pub mod tcl {
         }
 
         pub fn token_body(&mut self) -> &str {
-            return &self.body[self.begin..self.end];
+            &self.body[self.begin..self.end]
         }
 
         pub fn next(&mut self) -> Token {
@@ -278,11 +278,9 @@ pub mod tcl {
             if self.trace {
                 let begin = self.begin;
                 let end = self.end;
+                let uppercase_type = format!("{tk:?}").to_uppercase();
                 eprintln!(
-                    "{{\"type\": \"TK_{:?}\", \"begin\": {}, \"end\": {}, \"body\": {:?}}}",
-                    tk,
-                    begin,
-                    end,
+                    "{{\"type\": \"TK_{uppercase_type}\", \"begin\": {begin}, \"end\": {end}, \"body\": {:?}}}",
                     self.token_body()
                 );
             }
@@ -315,20 +313,22 @@ pub mod tcl {
             for var in self.vars.iter_mut() {
                 if var.name == name {
                     var.value = value.to_string();
-                    return Ok(Status::OK);
+                    return Ok(Status::Ok);
                 }
             }
             self.vars.push(Var {
                 name: name.to_string(),
                 value: value.to_string(),
             });
-            Ok(Status::OK)
+            Ok(Status::Ok)
         }
     }
 
+    type CmdFunc = fn(&mut Interp, &[String], Option<Rc<dyn Any>>) -> Result<Status, TclError>;
+
     pub struct Cmd {
         name: String,
-        cmd_func: fn(&mut Interp, &Vec<String>, Option<Rc<dyn Any>>) -> Result<Status, TclError>,
+        cmd_func: CmdFunc,
         privdata: Option<Rc<dyn Any>>,
     }
 
@@ -341,7 +341,7 @@ pub mod tcl {
 
     fn check_arity(
         interp: &mut Interp,
-        argv: &Vec<String>,
+        argv: &[String],
         min: usize,
         max: usize,
     ) -> Result<Status, TclError> {
@@ -355,33 +355,33 @@ pub mod tcl {
             ));
             return Err(TclError::Arity);
         }
-        Ok(Status::OK)
+        Ok(Status::Ok)
     }
 
     fn cmd_puts(
         interp: &mut Interp,
-        argv: &Vec<String>,
+        argv: &[String],
         _privdata: Option<Rc<dyn Any>>,
     ) -> Result<Status, TclError> {
         check_arity(interp, argv, 2, 2)?;
 
         println!("{}", argv[1]);
-        Ok(Status::OK)
+        Ok(Status::Ok)
     }
 
     fn cmd_set(
         interp: &mut Interp,
-        argv: &Vec<String>,
+        argv: &[String],
         _privdata: Option<Rc<dyn Any>>,
     ) -> Result<Status, TclError> {
         check_arity(interp, argv, 3, 3)?;
         interp.set_var(&argv[1], &argv[2])?;
-        Ok(Status::OK)
+        Ok(Status::Ok)
     }
 
     fn call_proc(
         interp: &mut Interp,
-        argv: &Vec<String>,
+        argv: &[String],
         privdata: Option<Rc<dyn Any>>,
     ) -> Result<Status, TclError> {
         let ppd = privdata
@@ -438,8 +438,8 @@ pub mod tcl {
         // TODO: This needs to be done under all circumstances.
         interp.callframes.pop();
 
-        if status == Status::RETURN {
-            status = Status::OK;
+        if status == Status::Return {
+            status = Status::Ok;
         }
 
         Ok(status)
@@ -447,7 +447,7 @@ pub mod tcl {
 
     fn cmd_if(
         interp: &mut Interp,
-        argv: &Vec<String>,
+        argv: &[String],
         _privdata: Option<Rc<dyn Any>>,
     ) -> Result<Status, TclError> {
         check_arity(interp, argv, 3, 5)?;
@@ -462,14 +462,14 @@ pub mod tcl {
 
         let res = interp.eval(cond);
 
-        if res.is_err() || res.unwrap() != Status::OK {
+        if res.is_err() || res.unwrap() != Status::Ok {
             return res;
         }
 
         let val = interp.result.as_ref().unwrap().parse::<i64>();
 
         if val.is_err() {
-            interp.result = Some(format!("invalid number: '{}'", cond));
+            interp.result = Some(format!("invalid number: '{cond}'"));
             return Err(TclError::InvalidNumber);
         }
 
@@ -481,12 +481,12 @@ pub mod tcl {
             return interp.eval(elseb.unwrap());
         }
 
-        Ok(Status::OK)
+        Ok(Status::Ok)
     }
 
     fn cmd_proc(
         interp: &mut Interp,
-        argv: &Vec<String>,
+        argv: &[String],
         _privdata: Option<Rc<dyn Any>>,
     ) -> Result<Status, TclError> {
         check_arity(interp, argv, 4, 4)?;
@@ -498,12 +498,12 @@ pub mod tcl {
 
         interp.register_command(&argv[1], call_proc, Some(ppd))?;
 
-        Ok(Status::OK)
+        Ok(Status::Ok)
     }
 
     fn cmd_while(
         interp: &mut Interp,
-        argv: &Vec<String>,
+        argv: &[String],
         _privdata: Option<Rc<dyn Any>>,
     ) -> Result<Status, TclError> {
         check_arity(interp, argv, 3, 3)?;
@@ -514,65 +514,65 @@ pub mod tcl {
         loop {
             let res = interp.eval(cond)?;
 
-            if res != Status::OK {
+            if res != Status::Ok {
                 return Ok(res);
             }
 
             let val = interp.result.as_ref().unwrap().parse::<i64>();
 
             if val.is_err() {
-                interp.result = Some(format!("invalid number: '{}'", cond));
+                interp.result = Some(format!("invalid number: '{cond}'"));
                 return Err(TclError::InvalidNumber);
             }
 
             if val.unwrap() == 0 {
-                return Ok(Status::OK);
+                return Ok(Status::Ok);
             }
 
             let res2 = interp.eval(body)?;
 
-            if res2 == Status::CONTINUE || res2 == Status::OK {
+            if res2 == Status::Continue || res2 == Status::Ok {
                 continue;
-            } else if res2 == Status::BREAK {
+            } else if res2 == Status::Break {
                 break;
             } else {
                 return Ok(res2);
             }
         }
-        return Ok(Status::OK);
+        Ok(Status::Ok)
     }
 
     fn cmd_continue(
         interp: &mut Interp,
-        argv: &Vec<String>,
+        argv: &[String],
         _privdata: Option<Rc<dyn Any>>,
     ) -> Result<Status, TclError> {
         check_arity(interp, argv, 1, 1)?;
-        Ok(Status::CONTINUE)
+        Ok(Status::Continue)
     }
 
     fn cmd_break(
         interp: &mut Interp,
-        argv: &Vec<String>,
+        argv: &[String],
         _privdata: Option<Rc<dyn Any>>,
     ) -> Result<Status, TclError> {
         check_arity(interp, argv, 1, 1)?;
-        Ok(Status::BREAK)
+        Ok(Status::Break)
     }
 
     fn cmd_return(
         interp: &mut Interp,
-        argv: &Vec<String>,
+        argv: &[String],
         _privdata: Option<Rc<dyn Any>>,
     ) -> Result<Status, TclError> {
         check_arity(interp, argv, 2, 2)?;
         interp.result = Some(argv[1].clone());
-        Ok(Status::RETURN)
+        Ok(Status::Return)
     }
 
     fn cmd_math(
         interp: &mut Interp,
-        argv: &Vec<String>,
+        argv: &[String],
         _privdata: Option<Rc<dyn Any>>,
     ) -> Result<Status, TclError> {
         check_arity(interp, argv, 3, 3)?;
@@ -611,7 +611,7 @@ pub mod tcl {
             }
         }
 
-        Ok(Status::OK)
+        Ok(Status::Ok)
     }
 
     impl Interp {
@@ -629,17 +629,12 @@ pub mod tcl {
         pub fn set_var(&mut self, name: &str, value: &str) -> Result<Status, TclError> {
             let callframe = self.callframes.last_mut().unwrap();
             callframe.set_var(name, value)?;
-            Ok(Status::OK)
+            Ok(Status::Ok)
         }
 
         fn get_var(&self, name: &str) -> Option<&Var> {
             let callframe = self.callframes.last().unwrap();
-            for var in callframe.vars.iter() {
-                if var.name == name {
-                    return Some(var);
-                }
-            }
-            None
+            callframe.vars.iter().find(|v| v.name == name)
         }
 
         pub fn get_command(&self, name: &str) -> Option<&Cmd> {
@@ -649,23 +644,23 @@ pub mod tcl {
         pub fn register_command(
             &mut self,
             name: &str,
-            cmd: fn(&mut Interp, &Vec<String>, Option<Rc<dyn Any>>) -> Result<Status, TclError>,
+            cmd: CmdFunc,
             privdata: Option<Rc<dyn Any>>,
         ) -> Result<Status, TclError> {
             if self.get_command(name).is_some() {
-                self.result = Some(format!("command already defined: '{name}'", name = name));
+                self.result = Some(format!("command already defined: '{name}'"));
                 return Err(TclError::CommandAlreadyDefined);
             }
 
             let cmd = Cmd {
                 name: name.to_string(),
                 cmd_func: cmd,
-                privdata: privdata,
+                privdata,
             };
 
             self.commands.push(cmd);
 
-            Ok(Status::OK)
+            Ok(Status::Ok)
         }
 
         pub fn register_core_commands(&mut self) {
@@ -705,39 +700,36 @@ pub mod tcl {
                 let token = p.next();
                 let mut t = p.token_body();
 
-                if token == Token::EOF {
+                if token == Token::Eof {
                     break;
-                } else if token == Token::VAR {
-                    let var = self.get_var(&t);
+                } else if token == Token::Var {
+                    let var = self.get_var(t);
                     if var.is_some() {
                         t = &var.unwrap().value;
                     } else {
-                        self.result = Some(format!("variable not found: '{name}'", name = t));
+                        self.result = Some(format!("variable not found: '{t}'"));
                         return Err(TclError::VariableNotFound);
                     }
-                } else if token == Token::CMD {
+                } else if token == Token::Cmd {
                     let ret = self.eval(t);
-                    if ret.is_err() || ret.unwrap() != Status::OK {
+                    if ret.is_err() || ret.unwrap() != Status::Ok {
                         return ret;
                     }
                     t = self.result.as_ref().unwrap();
-                } else if token == Token::SEP {
+                } else if token == Token::Sep {
                     continue;
-                } else if token == Token::EOL {
+                } else if token == Token::Eol {
                     if !argv.is_empty() {
                         let cmd_name = &argv[0];
                         let cmd = self.get_command(cmd_name);
                         if let Some(cmd) = cmd {
-                            let privdata_clone = cmd.privdata.as_ref().map(|p| Rc::clone(p));
+                            let privdata_clone = cmd.privdata.as_ref().map(Rc::clone);
                             let res = (cmd.cmd_func)(self, &argv, privdata_clone);
-                            if (res.is_ok() && res.ok().unwrap() != Status::OK) || res.is_err() {
+                            if (res.is_ok() && res.ok().unwrap() != Status::Ok) || res.is_err() {
                                 return res;
                             }
                         } else {
-                            self.result = Some(format!(
-                                "command not found: '{cmd_name}'",
-                                cmd_name = cmd_name
-                            ));
+                            self.result = Some(format!("command not found: '{cmd_name}'"));
                             return Err(TclError::CommandNotFound);
                         }
                     }
@@ -746,19 +738,19 @@ pub mod tcl {
                     continue;
                 }
 
-                if prevtype == Token::SEP || prevtype == Token::EOL {
+                if prevtype == Token::Sep || prevtype == Token::Eol {
                     // dup string
                     let duped = t.to_string();
                     argv.push(duped);
                 } else {
                     // append to prev token
                     let prev = argv.last().unwrap();
-                    let new = format!("{}{}", prev, t);
+                    let new = format!("{prev}{t}");
                     argv.pop();
                     argv.push(new);
                 }
             }
-            Ok(Status::OK)
+            Ok(Status::Ok)
         }
     }
 }
