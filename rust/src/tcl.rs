@@ -1,3 +1,4 @@
+// Most explanatory comments are in the C++ version.
 pub mod tcl {
     use std::any::Any;
     use std::rc::Rc;
@@ -396,7 +397,7 @@ pub mod tcl {
 
         let alist = &ppd.args;
 
-        let mut start: usize = 0;
+        let mut start;
         let mut j: usize = 0;
         let mut arity: usize = 0;
 
