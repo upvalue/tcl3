@@ -466,22 +466,17 @@ pub mod tcl {
             return res;
         }
 
-        let val = interp.result.as_ref().unwrap().parse::<i64>();
-
-        if val.is_err() {
-            interp.result = Some(format!("invalid number: '{cond}'"));
-            return Err(TclError::InvalidNumber);
+        match interp.result.as_ref().unwrap().parse::<i64>() {
+            Ok(0) => match elseb {
+                Some(elseb) => interp.eval(elseb),
+                None => Ok(Status::Ok),
+            },
+            Ok(_) => interp.eval(thenb),
+            Err(_) => {
+                interp.result = Some(format!("invalid number: '{cond}'"));
+                return Err(TclError::InvalidNumber);
+            }
         }
-
-        let val = val.unwrap();
-
-        if val != 0 {
-            return interp.eval(thenb);
-        } else if elseb.is_some() {
-            return interp.eval(elseb.unwrap());
-        }
-
-        Ok(Status::Ok)
     }
 
     fn cmd_proc(
