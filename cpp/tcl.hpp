@@ -1,7 +1,7 @@
 // tcl.hpp - a simple C++ Tcl interpreter
 
 /**
- * There are a few sections ot this code:
+ * There are a few sections to this code:
  *
  * (PRELUDE) You are here -- just defining enums and pretty printing of some
  * values
