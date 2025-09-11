@@ -2,6 +2,8 @@
 
 This was an experiment in implementing a simple Tcl interpreter in C++, Zig and Rust. Just to get a sense of how they feel.
 
+Read the article here: [Trialing Zig and Rust with a Tcl interpreter](https://upvalue.io/posts/trialing-zig-and-rust-by-writing-a-tcl-interpreter/)
+
 # Building
 
 You can run the script `./build.sh` which will attempt to build all
@@ -22,7 +24,6 @@ Some low hanging fruit if you wanted to improve:
 - Make the code more idiomatic for languages (e.g. use iterators for Parser)
 - Fix ProcPrivdata -- it's intended to be user extensible but is just a little
   silly in Zig and Rust code
-
 - A lot more tests, I bet there's a few bugs lurking
 
 # Testing 

@@ -12,6 +12,9 @@ using namespace tcl;
 std::set<std::string> allowed_flags = {"t", "trace-parser", "p", "parser-only",
                                        "h", "help"};
 
+/**
+ * Handles executing Tcl code or just parsing it
+ */
 void exec(Interp &i, const std::string &content, bool eval) {
   if (eval) {
     Status s = i.eval(content);

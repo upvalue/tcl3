@@ -1,12 +1,19 @@
-// tcl.hpp
+// tcl.hpp - a simple C++ Tcl interpreter
 
-// C++ reimplementation/butchery of picol
-
-// - Some differences: uses STL string and string_view -- less manual allocs and
-//   less allocs overall.
-// - Parser has been rewritten to have one main lexing loop
-// - Parser interface also uses string_view, doesn't expose as many variables
-// - Procedure private data uses virtual destructors for cleanup
+/**
+ * There are a few sections ot this code:
+ *
+ * (PRELUDE) You are here -- just defining enums and pretty printing of some
+ * values
+ *
+ * (PARSER) Handles tokenizing Tcl source code
+ *
+ * (INTERP) Data structures that are used in the interpreter
+ *
+ * (STDLIB) Commands that Tcl code can use including core primitives
+ *
+ * (EVAL) The interpreter
+ */
 
 #ifndef _TCL_HPP
 #define _TCL_HPP
@@ -24,23 +31,63 @@ namespace tcl {
 typedef std::string string;
 typedef std::string_view string_view;
 
+/**
+ * Most functions here return Status indicating whether there was
+ * an error or not. this is also how flow control primitives are
+ * implemented
+ */
 enum Status { S_OK = 0, S_ERR = 1, S_RETURN = 2, S_BREAK = 3, S_CONTINUE = 4 };
 
+/**
+ * Parser token types
+ */
 enum TokenType {
+  /**
+   * A string in need of escaping
+   */
   TK_ESC = 0,
+
+  /**
+   * A normal string
+   */
   TK_STR = 1,
+
+  /**
+   * A [command]
+   */
   TK_CMD = 2,
+
+  /**
+   * A $variable
+   */
   TK_VAR = 3,
+
+  /**
+   * Separating whitespace
+   */
   TK_SEP = 4,
+
+  /**
+   * End of line
+   */
   TK_EOL = 5,
+
+  /**
+   * End of file
+   */
   TK_EOF = 6,
+
+  /**
+   * Shouldn't happen
+   */
   TK_UNKNOWN = 7,
 };
 
 typedef TokenType Token;
 
 /*
- * Print a string but escape whitespace
+ * Handles printing a string with escpaes like \n so the parser
+ * can output its result on a single line
  */
 struct escape_string {
   escape_string(const string &s_) : s(s_) {}
@@ -93,16 +140,31 @@ inline std::ostream &operator<<(std::ostream &os, TokenType t) {
   return os;
 }
 
+/**
+ * Shorthand for making an error message
+ */
 #define C_ERR(x)                                                               \
   std::ostringstream _c_err_line_##__LINE__;                                   \
   _c_err_line_##__LINE__ << x;                                                 \
   result = _c_err_line_##__LINE__.str();
 
+/**
+ * Shorthand for making an error message from
+ * within a C-defined prcoedure
+ */
 #define C_CMD_ERR(i, x)                                                        \
   std::ostringstream _c_cmd_err_line_##__LINE__;                               \
   _c_cmd_err_line_##__LINE__ << x;                                             \
   i.result = _c_cmd_err_line_##__LINE__.str();
 
+/**
+ * (PARSER) Handles turning Tcl source code into a stream of
+ * tokens. It's an implicit state machine -- there are a few
+ * variables that need to be tracked which determine how to handle
+ * characters; whether we're in a "quote" a {brace} or a string (most
+ * everything is a string). The parser also calls itself recursively
+ * to handle [commands]
+ */
 struct Parser {
   Parser(const std::string_view &body_, bool trace_parser_ = false)
       : body(body_), trace_parser(trace_parser_) {}
@@ -117,15 +179,23 @@ struct Parser {
   bool in_brace = false;
   bool in_quote = false;
 
+  /**
+   * Tracks how nested the braces are to determine
+   * when to exit
+   */
   size_t brace_level = 0;
   Token token = TK_EOL;
   char terminating_char = 0;
 
+  // Basics for navigating around in the source
   bool done() { return cursor >= body.size(); }
   char peek() { return body[cursor]; }
   char getc() { return body[cursor++]; }
   void back() { cursor--; }
 
+  /**
+   * Returns a view to the actual token
+   */
   std::string_view token_body() { return body.substr(begin, end - begin); }
 
   /**
@@ -145,6 +215,9 @@ struct Parser {
     return false;
   }
 
+  /**
+   * Calls the parser recursively; for parsing commands
+   */
   void recurse(Parser &sub, char terminating_char) {
     sub.terminating_char = terminating_char;
     while (true) {
@@ -156,9 +229,14 @@ struct Parser {
     cursor = cursor + sub.cursor;
   }
 
+  /**
+   * The main function of the parser
+   */
   Token _next_token() {
     int adj = 0;
   start:
+    // We return EOL when we hit the end of the line and
+    // EOF when we hit the end of the source code
     if (done()) {
       if (token != TK_EOL && token != TK_EOF) {
         token = TK_EOL;
@@ -167,26 +245,40 @@ struct Parser {
       }
       return token;
     }
+
     token = TK_ESC;
     begin = cursor;
     while (!done()) {
       adj = 0;
       char c = getc();
+
+      // If a terminating_char is set, this is a recursive
+      // parser call and encountering the terminating_char
+      // exits the current parser (currently for [commands])
       if (terminating_char && c == terminating_char) {
         end = cursor;
         return TK_EOF;
       }
+
+      // Actually check characters
       switch (c) {
+      // {braced strings}
       case '{': {
+        // Braces in quotes have no special behavior
+        // and just become part of the string
+        // ex "mycoolstring{"
         if (in_quote || in_string)
           continue;
+
+        // If we're not in a brace already, note that we are
         if (!in_brace) {
           // Ignore opening brace
           begin++;
           token = TK_STR;
           in_brace = true;
         }
-        // Ignore brace
+
+        // Handle nested braces
         brace_level++;
         break;
       }
@@ -203,16 +295,23 @@ struct Parser {
           break;
         }
       }
+
+      // [commands]
       case '[': {
+        // Brackets in strings are not meaningful ex "notcommand["
         if (in_quote || in_string || in_brace)
           continue;
         begin++;
+
+        // Call the parser recursively to terminate on the next ]
         Parser sub(body.substr(cursor));
         recurse(sub, ']');
         adj = 1;
         token = TK_CMD;
         goto finish;
       }
+
+      // $variables
       case '$': {
         if (in_string || in_brace)
           continue;
@@ -233,10 +332,16 @@ struct Parser {
         in_string = true;
         break;
       }
-      // Potentially a comment
+
+      // #comments
       case '#': {
+        // Tcl privileges strings over comments, e.g. something like
+        // proc fib {x} { # My comment
+        // is not a valid comment; only if it occurs outside of a string
+        // or on its own line
         if (in_string || in_quote || in_brace)
           continue;
+
         // Consume until newline
         while (!done()) {
           if (getc() == '\n')
@@ -244,6 +349,8 @@ struct Parser {
         }
         goto start;
       }
+
+      // "quoted strings"
       case '"': {
         if (in_quote) {
           in_quote = false;
@@ -256,6 +363,10 @@ struct Parser {
         adj = 1;
         continue;
       }
+
+      // Whitespace handling; actually a little complex
+      // because it is a meaningful token for the interpreter (TK_SEP)
+      // but also part of various sorts of strings
       case ' ':
       case '\n':
       case '\r':
@@ -312,10 +423,19 @@ struct Parser {
 
 struct Interp;
 
+/**
+ * It's not necessary for the self contained interpreter, but
+ * Privdata is extensible which would enable users to add extensions
+ * that pass around their own arbitrary data
+ */
 struct Privdata {
   virtual ~Privdata() {}
 };
 
+/**
+ * ProcPrivdata is attached to procedures that are defined in Tcl
+ * code and contains the arguments and body for evaluation
+ */
 struct ProcPrivdata : Privdata {
   ProcPrivdata(string *args_, string *body_) : args(args_), body(body_) {}
 
@@ -328,9 +448,15 @@ struct ProcPrivdata : Privdata {
   string *body;
 };
 
+/**
+ * This is the type for C++-defined commands
+ */
 typedef Status(cmd_func_t)(Interp &i, std::vector<string> &argv,
                            Privdata *privdata);
 
+/**
+ *
+ */
 struct Cmd {
   Cmd(const string &name_, cmd_func_t *func_, Privdata *privdata_)
       : name(name_), func(func_), privdata(privdata_) {}
@@ -362,9 +488,15 @@ struct CallFrame {
   std::vector<Var *> vars;
 };
 
+/**
+ *
+ */
 inline Status call_proc(Interp &i, std::vector<string> &argv,
                         Privdata *privdata);
 
+/**
+ * The actual interpreter struct
+ */
 struct Interp {
   std::vector<Cmd *> commands;
   std::vector<CallFrame *> callframes;
@@ -393,8 +525,10 @@ struct Interp {
     delete cf;
   }
 
+  /**
+   * Look up a command
+   */
   Cmd *get_command(const string &name) const {
-    // Is there a better way to look this up in the vector?
     for (Cmd *c : commands) {
       if (c->name.compare(name) == 0) {
         return c;
@@ -403,6 +537,9 @@ struct Interp {
     return nullptr;
   }
 
+  /**
+   * Register an individual command defined in C++
+   */
   Status register_command(const string &name, cmd_func_t fn,
                           Privdata *privdata = nullptr) {
     if (get_command(name) != nullptr) {
@@ -445,10 +582,15 @@ struct Interp {
     return S_OK;
   }
 
-  //
-  ////// STANDARD LIBRARY
-  //
+  /**
+   * (STDLIB) This portion of the code implements the
+   * core language primitives like math functions, flow control
+   * and proc
+   */
 
+  /**
+   * Check whether a procedure has been given correct arguments
+   */
   bool arity_check(const string &name, const std::vector<string> &argv,
                    size_t min, size_t max) {
     if (min == max && argv.size() != min) {
@@ -480,6 +622,7 @@ struct Interp {
   }
 
   void register_core_commands() {
+    // print a string to stdout
     auto puts = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
       if (!i.arity_check("puts", argv, 2, 2)) {
         return S_ERR;
@@ -489,6 +632,10 @@ struct Interp {
       return S_OK;
     };
 
+    register_command("puts", puts);
+
+    // set x 5
+    // sets a variable
     auto set = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
       if (!i.arity_check("set", argv, 3, 3)) {
         return S_ERR;
@@ -498,11 +645,12 @@ struct Interp {
       return S_OK;
     };
 
-    register_command("puts", puts);
     register_command("set", set);
 
     // Flow control and procedures
 
+    // if procedure
+    // if {$condition} {then} {else}
     auto ifc = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
       if (!i.arity_check("if", argv, 3, 5)) {
         return S_ERR;
@@ -523,6 +671,8 @@ struct Interp {
     };
 
     register_command("if", ifc);
+
+    // while loops
 
     auto whilec = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
       if (!i.arity_check("while", argv, 3, 3)) {
@@ -555,7 +705,6 @@ struct Interp {
     register_command("while", whilec);
 
     // break & continue
-
     auto retcodes = [](Interp &i, std::vector<string> &argv,
                        Privdata *privdata) {
       if (!i.arity_check("retcodes", argv, 1, 1)) {
@@ -574,6 +723,7 @@ struct Interp {
     register_command("break", retcodes);
     register_command("continue", retcodes);
 
+    // Tcl-defined procedures
     auto proc = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
       if (!i.arity_check("proc", argv, 4, 4)) {
         return S_ERR;
@@ -589,6 +739,7 @@ struct Interp {
 
     register_command("proc", proc);
 
+    // Return from functions
     auto ret = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
       if (!i.arity_check("return", argv, 1, 2)) {
         return S_ERR;
@@ -599,7 +750,7 @@ struct Interp {
 
     register_command("return", ret);
 
-    ///// Math handling
+    // Math handling
     auto math = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
       if (!i.arity_check("math", argv, 3, 3)) {
         return S_ERR;
@@ -663,6 +814,9 @@ struct Interp {
   ////// EVALUATION
   //
 
+  /**
+   * Finally the actual evaluation function
+   */
   Status eval(const string_view &str) {
     result = "";
     // Parser p(str, trace_parser);
@@ -672,6 +826,17 @@ struct Interp {
     // Tracks command and argument
     std::vector<string> argv;
 
+    // The way this works is: Once we have a tokenized command,
+    // we loop through the command building up an argument vector
+    // while handling a few special cases like variable resolution
+
+    // ex puts "$x"
+    // becomes
+    // ["puts", "value of x"]
+
+    // The first member of that argument vector has to be a string that
+    // resolves to a valid command which will then be called with the
+    // whole argument vector
     while (1) {
       // Previous token type -- note that the parser default value (TK_EOL) is
       // load bearing
@@ -736,6 +901,11 @@ struct Interp {
   }
 };
 
+/**
+ * This function handles calling a Tcl-defined procedure
+ * (it's defined outside of the interpreter because it's a free-floating
+ * function that gets stored in a Cmd pointer just like normal ones)
+ */
 inline Status call_proc(Interp &i, std::vector<string> &argv, Privdata *pd_) {
   ProcPrivdata *pd = static_cast<ProcPrivdata *>(pd_);
   // Set up a new call frame
