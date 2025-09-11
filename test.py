@@ -150,7 +150,7 @@ if __name__ == "__main__":
     print("---")
     if args.update:
         print("UPDATED TESTS: ", need_update_tests)
-    print(f"PASSED {len(all_tests) - fail_count}/{len(all_tests)} TESTS")
+    print(f"PASSED {abs(len(all_tests) - fail_count)}/{len(all_tests)} TESTS")
     if fail_count > 0:
         sys.exit(1)
 

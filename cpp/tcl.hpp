@@ -10,9 +10,10 @@
  *
  * (INTERP) Data structures that are used in the interpreter
  *
+ * (EVAL) The interpreter
+
  * (STDLIB) Commands that Tcl code can use including core primitives
  *
- * (EVAL) The interpreter
  */
 
 #ifndef _TCL_HPP
@@ -421,6 +422,9 @@ struct Parser {
   }
 };
 
+/**
+ * (EVAL) The actual interpreter and supporting structs
+ */
 struct Interp;
 
 /**
@@ -455,7 +459,9 @@ typedef Status(cmd_func_t)(Interp &i, std::vector<string> &argv,
                            Privdata *privdata);
 
 /**
- *
+ * A command. Consists of a C++ function to be called,
+ * the command's name and optionally some arbitrary
+ * data for use in C++ functions when needed
  */
 struct Cmd {
   Cmd(const string &name_, cmd_func_t *func_, Privdata *privdata_)
@@ -470,6 +476,9 @@ struct Cmd {
   Privdata *privdata;
 };
 
+/**
+ * A Tcl variable
+ */
 struct Var {
   string *name, *val;
 
@@ -479,6 +488,12 @@ struct Var {
   }
 };
 
+/**
+ * A call frame -- contains
+ * variables for either the
+ * toplevel or an invocation
+ * of a procedure
+ */
 struct CallFrame {
   ~CallFrame() {
     for (Var *v : vars) {
@@ -488,11 +503,13 @@ struct CallFrame {
   std::vector<Var *> vars;
 };
 
-/**
- *
- */
+// The C++ procedure that handles invoking Tcl-defined
+// procedures
 inline Status call_proc(Interp &i, std::vector<string> &argv,
                         Privdata *privdata);
+
+// Registers the standard library commands
+inline void register_core_commands(Interp &i);
 
 /**
  * The actual interpreter struct
@@ -583,12 +600,6 @@ struct Interp {
   }
 
   /**
-   * (STDLIB) This portion of the code implements the
-   * core language primitives like math functions, flow control
-   * and proc
-   */
-
-  /**
    * Check whether a procedure has been given correct arguments
    */
   bool arity_check(const string &name, const std::vector<string> &argv,
@@ -619,195 +630,6 @@ struct Interp {
       }
     }
     return true;
-  }
-
-  void register_core_commands() {
-    // print a string to stdout
-    auto puts = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
-      if (!i.arity_check("puts", argv, 2, 2)) {
-        return S_ERR;
-      }
-
-      std::cout << argv[1] << std::endl;
-      return S_OK;
-    };
-
-    register_command("puts", puts);
-
-    // set x 5
-    // sets a variable
-    auto set = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
-      if (!i.arity_check("set", argv, 3, 3)) {
-        return S_ERR;
-      }
-
-      i.set_var(argv[1], argv[2]);
-      return S_OK;
-    };
-
-    register_command("set", set);
-
-    // Flow control and procedures
-
-    // if procedure
-    // if {$condition} {then} {else}
-    auto ifc = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
-      if (!i.arity_check("if", argv, 3, 5)) {
-        return S_ERR;
-      }
-
-      // Evaluate condition
-      if (i.eval(argv[1]) != S_OK) {
-        return S_ERR;
-      }
-
-      // Branch condition
-      if (atoi(i.result.c_str())) {
-        return i.eval(argv[2]);
-      } else if (argv.size() == 5) {
-        return i.eval(argv[4]);
-      }
-      return S_OK;
-    };
-
-    register_command("if", ifc);
-
-    // while loops
-
-    auto whilec = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
-      if (!i.arity_check("while", argv, 3, 3)) {
-        return S_ERR;
-      }
-
-      while (1) {
-        Status s = i.eval(argv[1]);
-        if (s != S_OK) {
-          return s;
-        }
-
-        if (atoi(i.result.c_str())) {
-          s = i.eval(argv[2]);
-          if (s == S_CONTINUE || s == S_OK) {
-            continue;
-          } else if (s == S_BREAK) {
-            return S_OK;
-          } else {
-            return s;
-          }
-        } else {
-          return S_OK;
-        }
-      }
-
-      return S_OK;
-    };
-
-    register_command("while", whilec);
-
-    // break & continue
-    auto retcodes = [](Interp &i, std::vector<string> &argv,
-                       Privdata *privdata) {
-      if (!i.arity_check("retcodes", argv, 1, 1)) {
-        return S_ERR;
-      }
-
-      if (argv[0].compare("break") == 0) {
-        return S_BREAK;
-      } else if (argv[0].compare("continue") == 0) {
-        return S_CONTINUE;
-      }
-
-      return S_OK;
-    };
-
-    register_command("break", retcodes);
-    register_command("continue", retcodes);
-
-    // Tcl-defined procedures
-    auto proc = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
-      if (!i.arity_check("proc", argv, 4, 4)) {
-        return S_ERR;
-      }
-
-      ProcPrivdata *ppd =
-          new ProcPrivdata(new string(argv[2]), new string(argv[3]));
-
-      i.register_command(argv[1], call_proc, ppd);
-
-      return S_OK;
-    };
-
-    register_command("proc", proc);
-
-    // Return from functions
-    auto ret = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
-      if (!i.arity_check("return", argv, 1, 2)) {
-        return S_ERR;
-      }
-      i.result = argv[1];
-      return S_RETURN;
-    };
-
-    register_command("return", ret);
-
-    // Math handling
-    auto math = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
-      if (!i.arity_check("math", argv, 3, 3)) {
-        return S_ERR;
-      }
-
-      int a, b, c = 0;
-
-      if (!i.int_check("math", argv, 1)) {
-        return S_ERR;
-      }
-      if (!i.int_check("math", argv, 2)) {
-        return S_ERR;
-      }
-
-      a = atoi(argv[1].c_str());
-      b = atoi(argv[2].c_str());
-
-      if (argv[0].compare("+") == 0) {
-        c = a + b;
-      } else if (argv[0].compare("-") == 0) {
-        c = a - b;
-      } else if (argv[0].compare("*") == 0) {
-        c = a * b;
-      } else if (argv[0].compare("/") == 0) {
-        c = a / b;
-      } else if (argv[0].compare(">") == 0) {
-        c = a > b;
-      } else if (argv[0].compare("<") == 0) {
-        c = a < b;
-      } else if (argv[0].compare("==") == 0) {
-        c = a == b;
-      } else if (argv[0].compare("!=") == 0) {
-        c = a != b;
-      } else if (argv[0].compare(">=") == 0) {
-        c = a >= b;
-      } else if (argv[0].compare("<=") == 0) {
-        c = a <= b;
-      } else {
-        C_CMD_ERR(i, "[" << argv[0] << "]: unknown operator");
-        return S_ERR;
-      }
-
-      i.result = std::to_string(c);
-
-      return S_OK;
-    };
-
-    register_command("+", math);
-    register_command("-", math);
-    register_command("*", math);
-    register_command("/", math);
-    register_command("==", math);
-    register_command("!=", math);
-    register_command(">", math);
-    register_command("<", math);
-    register_command(">=", math);
-    register_command("<=", math);
   }
 
   //
@@ -954,6 +776,199 @@ inline Status call_proc(Interp &i, std::vector<string> &argv, Privdata *pd_) {
   i.drop_call_frame();
 
   return s;
+}
+
+/**
+ * (STDLIB) This portion of the code implements the
+ * core language primitives like math functions, flow control
+ * and proc
+ */
+inline void register_core_commands(Interp &i) {
+  // print a string to stdout
+  auto puts = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
+    if (!i.arity_check("puts", argv, 2, 2)) {
+      return S_ERR;
+    }
+
+    std::cout << argv[1] << std::endl;
+    return S_OK;
+  };
+
+  i.register_command("puts", puts);
+
+  // set x 5
+  // sets a variable
+  auto set = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
+    if (!i.arity_check("set", argv, 3, 3)) {
+      return S_ERR;
+    }
+
+    i.set_var(argv[1], argv[2]);
+    return S_OK;
+  };
+
+  i.register_command("set", set);
+
+  // Flow control and procedures
+
+  // if procedure
+  // if {$condition} {then} {else}
+  auto ifc = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
+    if (!i.arity_check("if", argv, 3, 5)) {
+      return S_ERR;
+    }
+
+    // Evaluate condition
+    if (i.eval(argv[1]) != S_OK) {
+      return S_ERR;
+    }
+
+    // Branch condition
+    if (atoi(i.result.c_str())) {
+      return i.eval(argv[2]);
+    } else if (argv.size() == 5) {
+      return i.eval(argv[4]);
+    }
+    return S_OK;
+  };
+
+  i.register_command("if", ifc);
+
+  // while loops
+
+  auto whilec = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
+    if (!i.arity_check("while", argv, 3, 3)) {
+      return S_ERR;
+    }
+
+    while (1) {
+      Status s = i.eval(argv[1]);
+      if (s != S_OK) {
+        return s;
+      }
+
+      if (atoi(i.result.c_str())) {
+        s = i.eval(argv[2]);
+        if (s == S_CONTINUE || s == S_OK) {
+          continue;
+        } else if (s == S_BREAK) {
+          return S_OK;
+        } else {
+          return s;
+        }
+      } else {
+        return S_OK;
+      }
+    }
+
+    return S_OK;
+  };
+
+  i.register_command("while", whilec);
+
+  // break & continue
+  auto retcodes = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
+    if (!i.arity_check("retcodes", argv, 1, 1)) {
+      return S_ERR;
+    }
+
+    if (argv[0].compare("break") == 0) {
+      return S_BREAK;
+    } else if (argv[0].compare("continue") == 0) {
+      return S_CONTINUE;
+    }
+
+    return S_OK;
+  };
+
+  i.register_command("break", retcodes);
+  i.register_command("continue", retcodes);
+
+  // Tcl-defined procedures
+  auto proc = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
+    if (!i.arity_check("proc", argv, 4, 4)) {
+      return S_ERR;
+    }
+
+    ProcPrivdata *ppd =
+        new ProcPrivdata(new string(argv[2]), new string(argv[3]));
+
+    i.register_command(argv[1], call_proc, ppd);
+
+    return S_OK;
+  };
+
+  i.register_command("proc", proc);
+
+  // Return from functions
+  auto ret = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
+    if (!i.arity_check("return", argv, 1, 2)) {
+      return S_ERR;
+    }
+    i.result = argv[1];
+    return S_RETURN;
+  };
+
+  i.register_command("return", ret);
+
+  // Math handling
+  auto math = [](Interp &i, std::vector<string> &argv, Privdata *privdata) {
+    if (!i.arity_check("math", argv, 3, 3)) {
+      return S_ERR;
+    }
+
+    int a, b, c = 0;
+
+    if (!i.int_check("math", argv, 1)) {
+      return S_ERR;
+    }
+    if (!i.int_check("math", argv, 2)) {
+      return S_ERR;
+    }
+
+    a = atoi(argv[1].c_str());
+    b = atoi(argv[2].c_str());
+
+    if (argv[0].compare("+") == 0) {
+      c = a + b;
+    } else if (argv[0].compare("-") == 0) {
+      c = a - b;
+    } else if (argv[0].compare("*") == 0) {
+      c = a * b;
+    } else if (argv[0].compare("/") == 0) {
+      c = a / b;
+    } else if (argv[0].compare(">") == 0) {
+      c = a > b;
+    } else if (argv[0].compare("<") == 0) {
+      c = a < b;
+    } else if (argv[0].compare("==") == 0) {
+      c = a == b;
+    } else if (argv[0].compare("!=") == 0) {
+      c = a != b;
+    } else if (argv[0].compare(">=") == 0) {
+      c = a >= b;
+    } else if (argv[0].compare("<=") == 0) {
+      c = a <= b;
+    } else {
+      C_CMD_ERR(i, "[" << argv[0] << "]: unknown operator");
+      return S_ERR;
+    }
+
+    i.result = std::to_string(c);
+
+    return S_OK;
+  };
+
+  i.register_command("+", math);
+  i.register_command("-", math);
+  i.register_command("*", math);
+  i.register_command("/", math);
+  i.register_command("==", math);
+  i.register_command("!=", math);
+  i.register_command(">", math);
+  i.register_command("<", math);
+  i.register_command(">=", math);
+  i.register_command("<=", math);
 }
 
 } // namespace tcl

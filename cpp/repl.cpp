@@ -67,7 +67,7 @@ int main(int argc, char *argv[]) {
 
   Interp i;
   i.trace_parser = trace_parser;
-  i.register_core_commands();
+  register_core_commands(i);
 
   if (cmdl(1)) {
     std::ifstream file(cmdl[1]);

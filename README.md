@@ -53,5 +53,5 @@ test is considered a failure, and the implementation should be fixed before
 updating the snapshots.
 
 Note that picol "fails" a couple of the parser tests because I rewrote the
-parser for the other implementations -- I don't think the behavior differences
-are meaningful but let me know if there are any parser bugs.
+parser for the other implementations -- aside from fixing a small bug in the Picol parser
+
