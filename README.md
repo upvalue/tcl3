@@ -52,6 +52,7 @@ output doesn't match the given `out` file or the output file doesn't exist the
 test is considered a failure, and the implementation should be fixed before
 updating the snapshots.
 
-Note that picol "fails" a couple of the parser tests because I rewrote the
-parser for the other implementations -- aside from fixing a small bug in the Picol parser
+Note that picol "fails" a couple of the parser tests because I rewrote the parser for the other
+implementations -- aside from fixing a small bug in the Picol parser I don't think there are any
+meaningful differences.
 
