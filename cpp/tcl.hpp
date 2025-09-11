@@ -8,10 +8,8 @@
  *
  * (PARSER) Handles tokenizing Tcl source code
  *
- * (INTERP) Data structures that are used in the interpreter
- *
  * (EVAL) The interpreter
-
+ *
  * (STDLIB) Commands that Tcl code can use including core primitives
  *
  */
