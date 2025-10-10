@@ -15,19 +15,12 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    // We will also create a module for our other entry point, 'main.zig'.
-    const exe_mod = b.createModule(.{
-        // `root_source_file` is the Zig "entry point" of the module. If a module
-        // only contains e.g. external object files, you can make this `null`.
-        // In this case the main source file is merely a path, however, in more
-        // complicated build scripts, this could be a generated file.
+    const exe_mod = b.addModule("exe", .{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    // This creates another `std.Build.Step.Compile`, but this one builds an executable
-    // rather than a static library.
     const exe = b.addExecutable(.{
         .name = "tcl",
         .root_module = exe_mod,
@@ -38,7 +31,7 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("clap", clap.module("clap"));
 
     // Add linenoise (C) for REPL input handling
-    exe.addCSourceFile(.{ .file = b.path("../vendor/linenoise.c"), .flags = &.{} });
+    exe.addCSourceFiles(.{ .files = &.{"../vendor/linenoise.c"}, .flags = &.{} });
     exe.addIncludePath(b.path("../vendor"));
     exe.linkLibC();
 
@@ -70,8 +63,14 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
+    const test_mod = b.addModule("test", .{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const exe_unit_tests = b.addTest(.{
-        .root_module = exe_mod,
+        .root_module = test_mod,
     });
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);

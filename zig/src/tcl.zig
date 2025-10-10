@@ -1,8 +1,6 @@
 const std = @import("std");
 const print = std.debug.print;
 
-const stdio = std.io.getStdOut().writer();
-
 // The Zig version
 
 // There aren't many explanatory comments in this one because it's structured
@@ -18,7 +16,7 @@ pub const TclError = error{
     VariableNotFound,
 };
 
-pub const Error = TclError || std.mem.Allocator.Error || std.fmt.AllocPrintError || std.fmt.ParseIntError;
+pub const Error = TclError || std.mem.Allocator.Error || std.fmt.ParseIntError;
 
 pub const Status = enum {
     OK,
@@ -232,7 +230,7 @@ pub const Parser = struct {
     pub fn next(p: *Parser) Token {
         const t = _next(p);
         if (p.trace) {
-            std.debug.print("{{\"type\": \"TK_{s}\", \"begin\": {}, \"end\": {}, \"body\": \"{}\"}}\n", .{ @tagName(t), p.begin, p.end, std.zig.fmtEscapes(p.body[p.begin..p.end]) });
+            std.debug.print("{{\"type\": \"TK_{s}\", \"begin\": {}, \"end\": {}, \"body\": \"{f}\"}}\n", .{ @tagName(t), p.begin, p.end, std.zig.fmtString(p.body[p.begin..p.end]) });
         }
         return t;
     }
@@ -248,7 +246,7 @@ pub const ProcPrivdata = struct {
     body: []u8,
 };
 
-pub const CmdFunc = fn (*Interp, std.ArrayList([]u8), ?*Privdata) Error!Status;
+pub const CmdFunc = fn (*Interp, std.array_list.Managed([]u8), ?*Privdata) Error!Status;
 
 pub const Cmd = struct {
     name: []u8,
@@ -287,11 +285,11 @@ pub const Var = struct {
 };
 
 pub const CallFrame = struct {
-    vars: std.ArrayList(Var),
+    vars: std.array_list.Managed(Var),
 
     pub fn init(allocator: std.mem.Allocator) CallFrame {
         return CallFrame{
-            .vars = std.ArrayList(Var).init(allocator),
+            .vars = std.array_list.Managed(Var).init(allocator),
         };
     }
 
@@ -301,7 +299,7 @@ pub const CallFrame = struct {
     }
 };
 
-fn check_arity(interp: *Interp, name: []const u8, argv: std.ArrayList([]u8), min: usize, max: usize) Error!Status {
+fn check_arity(interp: *Interp, name: []const u8, argv: std.array_list.Managed([]u8), min: usize, max: usize) Error!Status {
     if (argv.items.len < min or argv.items.len > max) {
         try interp.set_result_fmt("wrong number of arguments to {s}: expected {d}-{d}, got {d}", .{ name, min, max, argv.items.len });
         return error.Arity;
@@ -309,7 +307,7 @@ fn check_arity(interp: *Interp, name: []const u8, argv: std.ArrayList([]u8), min
     return Status.OK;
 }
 
-fn cmd_set(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
+fn cmd_set(i: *Interp, argv: std.array_list.Managed([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "set", argv, 3, 3);
 
     const name = argv.items[1];
@@ -319,24 +317,26 @@ fn cmd_set(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
     return Status.OK;
 }
 
-fn cmd_puts(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
+fn cmd_puts(i: *Interp, argv: std.array_list.Managed([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "puts", argv, 2, 2);
 
-    stdio.print("{s}\n", .{argv.items[1]}) catch return error.General;
+    const stdout = std.fs.File.stdout();
+    stdout.writeAll(argv.items[1]) catch return error.General;
+    stdout.writeAll("\n") catch return error.General;
     return Status.OK;
 }
 
-fn cmd_continue(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
+fn cmd_continue(i: *Interp, argv: std.array_list.Managed([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "continue", argv, 1, 1);
     return Status.CONTINUE;
 }
 
-fn cmd_break(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
+fn cmd_break(i: *Interp, argv: std.array_list.Managed([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "break", argv, 1, 1);
     return Status.BREAK;
 }
 
-fn cmd_while(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
+fn cmd_while(i: *Interp, argv: std.array_list.Managed([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "while", argv, 3, 3);
 
     const cond = argv.items[1];
@@ -369,13 +369,13 @@ fn cmd_while(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status 
     return Status.OK;
 }
 
-fn cmd_return(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
+fn cmd_return(i: *Interp, argv: std.array_list.Managed([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "return", argv, 2, 2);
     try i.set_result(argv.items[1]);
     return Status.RETURN;
 }
 
-fn cmd_proc(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
+fn cmd_proc(i: *Interp, argv: std.array_list.Managed([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "proc", argv, 4, 4);
 
     const alist = try i.allocator.dupe(u8, argv.items[2]);
@@ -392,7 +392,7 @@ fn cmd_proc(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
     return Status.OK;
 }
 
-fn cmd_if(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
+fn cmd_if(i: *Interp, argv: std.array_list.Managed([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "if", argv, 3, 5);
 
     const cond = argv.items[1];
@@ -415,7 +415,7 @@ fn cmd_if(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
     return Status.OK;
 }
 
-fn cmd_math(i: *Interp, argv: std.ArrayList([]u8), _: ?*Privdata) Error!Status {
+fn cmd_math(i: *Interp, argv: std.array_list.Managed([]u8), _: ?*Privdata) Error!Status {
     _ = try check_arity(i, "math", argv, 3, 3);
 
     const a = try std.fmt.parseInt(i64, argv.items[1], 10);
@@ -456,7 +456,7 @@ fn proc_finalizer(allocator: std.mem.Allocator, data: *anyopaque) void {
     allocator.destroy(pdp);
 }
 
-fn call_proc(i: *Interp, argv: std.ArrayList([]u8), privdata: ?*Privdata) Error!Status {
+fn call_proc(i: *Interp, argv: std.array_list.Managed([]u8), privdata: ?*Privdata) Error!Status {
     const ppd: *ProcPrivdata = @alignCast(@ptrCast(privdata.?.data));
     const cf = CallFrame.init(i.allocator);
     try i.callframes.append(cf);
@@ -506,8 +506,8 @@ fn call_proc(i: *Interp, argv: std.ArrayList([]u8), privdata: ?*Privdata) Error!
 }
 
 pub const Interp = struct {
-    commands: std.ArrayList(Cmd),
-    callframes: std.ArrayList(CallFrame),
+    commands: std.array_list.Managed(Cmd),
+    callframes: std.array_list.Managed(CallFrame),
     allocator: std.mem.Allocator,
     trace_parser: bool,
     result: ?[]u8 = null,
@@ -515,8 +515,8 @@ pub const Interp = struct {
     pub fn init(allocator: std.mem.Allocator) !Interp {
         const result = try allocator.alloc(u8, 0);
         var i = Interp{
-            .commands = std.ArrayList(Cmd).init(allocator),
-            .callframes = std.ArrayList(CallFrame).init(allocator),
+            .commands = std.array_list.Managed(Cmd).init(allocator),
+            .callframes = std.array_list.Managed(CallFrame).init(allocator),
             .allocator = allocator,
             .trace_parser = false,
             .result = result,
@@ -633,7 +633,7 @@ pub const Interp = struct {
     }
 
     pub fn eval(self: *Interp, str: []u8) Error!Status {
-        var argv = std.ArrayList([]u8).init(self.allocator);
+        var argv = std.array_list.Managed([]u8).init(self.allocator);
         defer argv.deinit();
         defer for (argv.items) |a| {
             self.allocator.free(a);

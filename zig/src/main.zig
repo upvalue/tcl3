@@ -48,7 +48,11 @@ pub fn main() !void {
         .diagnostic = &diag,
         .allocator = gpaalloc.allocator(),
     }) catch |err| {
-        try diag.report(std.io.getStdErr().writer(), err);
+        const stderr = std.fs.File.stderr();
+        var stderr_buf: [4096]u8 = undefined;
+        var file_writer = stderr.writer(&stderr_buf);
+        try diag.report(&file_writer.interface, err);
+        try file_writer.interface.flush();
         return err;
     };
     defer res.deinit();
