@@ -11,7 +11,14 @@ implementations and report status -- it assumes the toolchain for each language
 is accessible in the environment so if you don't have e.g. Zig installed then
 that build will fail. It also assumes you have GNU make installed as `make`.
 
-Zig was at 0.14.1, not tested on 0.15 and will likely fail. 
+# Implementations and notes
+
+- ./cpp - C++ STL implementation
+- ./cpp-min - A variant of the C++ implementation with fairly minimal C stdlib dependencies (for
+  porting to an embedded system)
+- ./rust - Rust
+- ./zig - Zig 0.15 implementation
+
 
 # Low hanging fruit
 

@@ -13,6 +13,17 @@ else
     cpp_status="FAIL"
 fi
 
+# Build cpp
+cd ../cpp-min
+if make; then
+    echo "[CPP] SUCCESS"
+    cpp_status="SUCCESS"
+    echo "c++ interpreter available at ./cpp-min/repl"
+else
+    echo "[CPP] FAIL"
+    cpp_status="FAIL"
+fi
+
 # Build picol
 cd ../picol
 if make; then
